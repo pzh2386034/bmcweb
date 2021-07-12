@@ -1293,41 +1293,10 @@ class EventServiceManager
             });
     }
 
-    static int startEventLogMonitor(boost::asio::io_context& ioc)
+    static int startEventLogMonitor(boost::asio::io_context& )
     {
-        inotifyConn.emplace(ioc);
-        inotifyFd = inotify_init1(IN_NONBLOCK);
-        if (inotifyFd == -1)
-        {
-            BMCWEB_LOG_ERROR << "inotify_init1 failed.";
-            return -1;
-        }
-
-        // Add watch on directory to handle redfish event log file
-        // create/delete.
-        dirWatchDesc = inotify_add_watch(inotifyFd, redfishEventLogDir,
-                                         IN_CREATE | IN_MOVED_TO | IN_DELETE);
-        if (dirWatchDesc == -1)
-        {
-            BMCWEB_LOG_ERROR
-                << "inotify_add_watch failed for event log directory.";
-            return -1;
-        }
 
         // Watch redfish event log file for modifications.
-        fileWatchDesc =
-            inotify_add_watch(inotifyFd, redfishEventLogFile, IN_MODIFY);
-        if (fileWatchDesc == -1)
-        {
-            BMCWEB_LOG_ERROR
-                << "inotify_add_watch failed for redfish log file.";
-            // Don't return error if file not exist.
-            // Watch on directory will handle create/delete of file.
-        }
-
-        // monitor redfish event log file
-        inotifyConn->assign(inotifyFd);
-        watchRedfishEventLogFile();
 
         return 0;
     }

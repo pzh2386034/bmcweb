@@ -27,7 +27,7 @@
 #include <nbd_proxy.hpp>
 #endif
 
-constexpr int defaultPort = 18080;
+constexpr int defaultPort = 443;
 
 inline void setupSocket(crow::App& app)
 {
