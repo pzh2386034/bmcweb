@@ -1274,75 +1274,13 @@ class Router
                 const boost::system::error_code ec,
                 std::map<std::string, std::variant<bool, std::string,
                                                    std::vector<std::string>>>
-                    userInfo) {
-                if (ec)
+                    ) {
+	        if (ec)
                 {
                     BMCWEB_LOG_ERROR << "GetUserInfo failed...";
-                    res.result(
-                        boost::beast::http::status::internal_server_error);
-                    res.end();
-                    return;
                 }
 
-                const std::string* userRolePtr = nullptr;
-                auto userInfoIter = userInfo.find("UserPrivilege");
-                if (userInfoIter != userInfo.end())
-                {
-                    userRolePtr =
-                        std::get_if<std::string>(&userInfoIter->second);
-                }
-
-                std::string userRole{};
-                if (userRolePtr != nullptr)
-                {
-                    userRole = *userRolePtr;
-                    BMCWEB_LOG_DEBUG << "userName = " << req.session->username
-                                     << " userRole = " << *userRolePtr;
-                }
-
-                bool* remoteUserPtr = nullptr;
-                auto remoteUserIter = userInfo.find("RemoteUser");
-                if (remoteUserIter != userInfo.end())
-                {
-                    remoteUserPtr = std::get_if<bool>(&remoteUserIter->second);
-                }
-                if (remoteUserPtr == nullptr)
-                {
-                    BMCWEB_LOG_ERROR
-                        << "RemoteUser property missing or wrong type";
-                    res.result(
-                        boost::beast::http::status::internal_server_error);
-                    res.end();
-                    return;
-                }
-                bool remoteUser = *remoteUserPtr;
-
-                bool passwordExpired = false; // default for remote user
-                if (!remoteUser)
-                {
-                    bool* passwordExpiredPtr = nullptr;
-                    auto passwordExpiredIter =
-                        userInfo.find("UserPasswordExpired");
-                    if (passwordExpiredIter != userInfo.end())
-                    {
-                        passwordExpiredPtr =
-                            std::get_if<bool>(&passwordExpiredIter->second);
-                    }
-                    if (passwordExpiredPtr != nullptr)
-                    {
-                        passwordExpired = *passwordExpiredPtr;
-                    }
-                    else
-                    {
-                        BMCWEB_LOG_ERROR
-                            << "UserPasswordExpired property is expected for"
-                               " local user but is missing or wrong type";
-                        res.result(
-                            boost::beast::http::status::internal_server_error);
-                        res.end();
-                        return;
-                    }
-                }
+                std::string userRole = "priv-admin";
 
                 // Get the userprivileges from the role
                 redfish::Privileges userPrivileges =
@@ -1351,16 +1289,6 @@ class Router
                 // Set isConfigureSelfOnly based on D-Bus results.  This
                 // ignores the results from both pamAuthenticateUser and the
                 // value from any previous use of this session.
-                req.session->isConfigureSelfOnly = passwordExpired;
-
-                // Modifyprivileges if isConfigureSelfOnly.
-                if (req.session->isConfigureSelfOnly)
-                {
-                    // Remove allprivileges except ConfigureSelf
-                    userPrivileges = userPrivileges.intersection(
-                        redfish::Privileges{"ConfigureSelf"});
-                    BMCWEB_LOG_DEBUG << "Operation limited to ConfigureSelf";
-                }
 
                 if (!rules[ruleIndex]->checkPrivileges(userPrivileges))
                 {

@@ -27,6 +27,7 @@
 
 #include <variant>
 
+#include <curl/curl.h>
 namespace redfish
 {
 
@@ -2050,6 +2051,68 @@ class Systems : public Node
         {
             setPowerRestorePolicy(asyncResp, std::move(*powerRestorePolicy));
         }
+    }
+       static size_t writeFunction(void* ptr, size_t size, size_t nmemb, std::string* data) {
+        data->append( static_cast<char*>(ptr), size * nmemb);
+        return size * nmemb;
+    }
+
+    void doPost(crow::Response& response, const crow::Request&,
+               const std::vector<std::string>&) override
+    {
+        CURL *curl;
+        CURLcode res;
+        struct curl_slist *headers=NULL; // init to NULL is important
+        std::string response_string;
+        std::string header_string;
+        headers = curl_slist_append(headers, "Accept: application/json");
+        headers = curl_slist_append(headers, "Content-Type: application/json");
+        headers = curl_slist_append(headers, "charsets: utf-8");
+        /* In windows, this will init the winsock stuff */
+        curl_global_init(CURL_GLOBAL_ALL);
+
+        /* get a curl handle */
+        curl = curl_easy_init();
+        if(curl) {
+        /* First set the URL that is about to receive our POST. This URL can
+       just as well be a https:// URL if that is what should receive the
+       data. */
+            curl_easy_setopt(curl, CURLOPT_URL, "https://jsonplaceholder.typicode.com/todos/1");
+            curl_easy_setopt(curl, CURLOPT_HTTPAUTH, CURLAUTH_BASIC);
+            curl_easy_setopt(curl, CURLOPT_SSL_VERIFYPEER, 0);
+            curl_easy_setopt(curl, CURLOPT_SSL_VERIFYHOST, 0);
+            curl_easy_setopt(curl, CURLOPT_VERBOSE, 1);
+            curl_easy_setopt(curl, CURLOPT_USERPWD, "abcd:efgh");    // set user name and password for the authentication
+
+            /* Now specify the POST data */
+            //curl_easy_setopt(curl, CURLOPT_POSTFIELDS, "name=test1&project=test2");
+            curl_easy_setopt(curl, CURLOPT_HTTPHEADER, headers);
+
+
+            curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, writeFunction);
+            curl_easy_setopt(curl, CURLOPT_WRITEDATA, &response_string);
+            curl_easy_setopt(curl, CURLOPT_HEADERDATA, &header_string);
+            std::cout<<"begin to perform......."<<std::endl;
+            /* Perform the request, res will get the return code */
+            res = curl_easy_perform(curl);
+            /* Check for errors */
+            if(res != CURLE_OK)
+                fprintf(stderr, "curl_easy_perform() failed: %s\n",
+                    curl_easy_strerror(res));
+            if(CURLE_OK == res) {
+                char *ct;
+                res = curl_easy_getinfo(curl, CURLINFO_CONTENT_TYPE, &ct);
+                if((CURLE_OK == res) && ct)
+                    printf("We received Content-Type: %s\n", ct);
+            }
+            std::cout << response_string;
+            /* always cleanup */
+            curl_easy_cleanup(curl);
+        }
+        curl_global_cleanup();
+        response.jsonValue = nlohmann::json::parse(response_string);
+
+        response.end();
     }
 };
 

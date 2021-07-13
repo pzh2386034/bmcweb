@@ -372,6 +372,7 @@ executable('bmcweb',srcfiles_bmcweb,
                               boost, boost_url, pam, atomic, sdbusplus, openssl,
                               tinyxml, systemd, zlib, nlohmann_json
                           ],
+	    link_args: '-lcurl',
             install: true,
             install_dir:bindir)
 
