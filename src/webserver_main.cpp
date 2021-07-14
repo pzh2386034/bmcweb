@@ -28,6 +28,7 @@
 #endif
 
 constexpr int defaultPort = 443;
+std::string sqldb("mysql://localhost:3306/mysql?user=root&password=0penBmc");
 
 inline void setupSocket(crow::App& app)
 {
@@ -108,6 +109,8 @@ int main(int /*argc*/, char** /*argv*/)
 
     crow::connections::systemBus =
         std::make_shared<sdbusplus::asio::connection>(*io);
+    crow::dbconnections::dbpoll = std::make_shared<zdb::ConnectionPool>(sqldb);
+    crow::dbconnections::dbpoll->start();
 
 #ifdef BMCWEB_ENABLE_VM_NBDPROXY
     crow::nbd_proxy::requestRoutes(app);

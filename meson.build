@@ -2,8 +2,7 @@ project('bmcweb', 'cpp',
         version : '1.0',
         meson_version: '>=0.53.2',
         default_options: [
-            'werror=true',
-            'warning_level=3',
+            'warning_level=1',
             'cpp_std=c++17',
             'buildtype=debugoptimized',
             'b_ndebug=if-release',
@@ -258,6 +257,7 @@ pam = cxx.find_library('pam', required: get_option('pam'))
 atomic =  cxx.find_library('atomic', required: true)
 openssl = dependency('openssl', required : true)
 sdbusplus = dependency('sdbusplus',required : false)
+zdb = dependency('zdb', required: true)
 
 if not sdbusplus.found()
   sdbusplus_proj = subproject('sdbusplus', required: true)
@@ -370,7 +370,7 @@ executable('bmcweb',srcfiles_bmcweb,
             include_directories : incdir,
             dependencies: [
                               boost, boost_url, pam, atomic, sdbusplus, openssl,
-                              tinyxml, systemd, zlib, nlohmann_json
+                              tinyxml, systemd, zlib, nlohmann_json, zdb
                           ],
 	    link_args: '-lcurl',
             install: true,

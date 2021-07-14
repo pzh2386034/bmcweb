@@ -29,6 +29,7 @@
 #include <variant>
 
 #include <curl/curl.h>
+#include "zdb.h"
 namespace redfish
 {
 
@@ -2074,9 +2075,7 @@ void doPost(crow::Response& response, const crow::Request& req,
             return;
         }
 
-//	char * escape_control = curl_escape(name.c_str(), static_cast<int>(name.size()) );
-//        name = escape_control;
-//        curl_free(escape_control);
+
 
   CURL *hnd;
   curl_mime *mime1;
@@ -2121,36 +2120,30 @@ void doPost(crow::Response& response, const crow::Request& req,
     curl_easy_setopt(hnd, CURLOPT_WRITEFUNCTION, writeFunction);
     curl_easy_setopt(hnd, CURLOPT_WRITEDATA, &response_string);
     curl_easy_setopt(hnd, CURLOPT_HEADERDATA, &header_string);
-  /* Here is a list of options the curl code used that cannot get generated
-     as source easily. You may select to either not use them or implement
-     them yourself.
-
-  CURLOPT_WRITEDATA set to a objectpointer
-  CURLOPT_INTERLEAVEDATA set to a objectpointer
-  CURLOPT_WRITEFUNCTION set to a functionpointer
-  CURLOPT_READDATA set to a objectpointer
-  CURLOPT_READFUNCTION set to a functionpointer
-  CURLOPT_SEEKDATA set to a objectpointer
-  CURLOPT_SEEKFUNCTION set to a functionpointer
-  CURLOPT_ERRORBUFFER set to a objectpointer
-  CURLOPT_STDERR set to a objectpointer
-  CURLOPT_DEBUGFUNCTION set to a functionpointer
-  CURLOPT_DEBUGDATA set to a objectpointer
-  CURLOPT_HEADERFUNCTION set to a functionpointer
-  CURLOPT_HEADERDATA set to a objectpointer
-
-  */
 
   curl_easy_perform(hnd);
 std::cout<<response_string<<std::endl;
-
+/*    `name` VARCHAR(15) NOT NULL,
+   `idNum` VARCHAR(18) NOT NULL,
+   `cardNo` VARCHAR(20) NOT NULL,
+   `mobile` VARCHAR(11) NOT NULL,
+   `submit_date` DATE NOT NULL, */
   curl_easy_cleanup(hnd);
   hnd = NULL;
   curl_mime_free(mime1);
   mime1 = NULL;
 
         curl_global_cleanup();
+
         response.jsonValue = nlohmann::json::parse(response_string);
+    if (response.jsonValue["chargeStatus"] == "1")
+    {
+        zdb::Connection conn = crow::dbconnections::dbpoll->getConnection();
+        zdb::PreparedStatement p1 = conn.prepareStatement("insert into runoob_tbl (name, idNum, cardNo, mobile, submit_date) values(?, ?, ?, ?, NOW());", name, idNum, cardNo, mobile);
+        conn.beginTransaction();
+        p1.execute();
+        conn.commit();
+    }
 
         response.end();
     }
