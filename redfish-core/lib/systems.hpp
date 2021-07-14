@@ -15,6 +15,7 @@
 */
 #pragma once
 
+
 #include "health.hpp"
 #include "led.hpp"
 #include "pcie.hpp"
@@ -2056,64 +2057,105 @@ class Systems : public Node
         data->append( static_cast<char*>(ptr), size * nmemb);
         return size * nmemb;
     }
-
-    void doPost(crow::Response& response, const crow::Request&,
+void doPost(crow::Response& response, const crow::Request& req,
                const std::vector<std::string>&) override
     {
-        CURL *curl;
-        CURLcode res;
-        struct curl_slist *headers=NULL; // init to NULL is important
-        std::string response_string;
-        std::string header_string;
-        headers = curl_slist_append(headers, "Accept: application/json");
-        headers = curl_slist_append(headers, "Content-Type: application/json");
-        headers = curl_slist_append(headers, "charsets: utf-8");
-        /* In windows, this will init the winsock stuff */
-        curl_global_init(CURL_GLOBAL_ALL);
+        std::string appId;
+        std::string appKey;
+        std::string name;
+        std::string idNum;
+        std::string cardNo;
+        std::string mobile;
 
-        /* get a curl handle */
-        curl = curl_easy_init();
-        if(curl) {
-        /* First set the URL that is about to receive our POST. This URL can
-       just as well be a https:// URL if that is what should receive the
-       data. */
-            curl_easy_setopt(curl, CURLOPT_URL, "https://jsonplaceholder.typicode.com/todos/1");
-            curl_easy_setopt(curl, CURLOPT_HTTPAUTH, CURLAUTH_BASIC);
-            curl_easy_setopt(curl, CURLOPT_SSL_VERIFYPEER, 0);
-            curl_easy_setopt(curl, CURLOPT_SSL_VERIFYHOST, 0);
-            curl_easy_setopt(curl, CURLOPT_VERBOSE, 1);
-            curl_easy_setopt(curl, CURLOPT_USERPWD, "abcd:efgh");    // set user name and password for the authentication
-
-            /* Now specify the POST data */
-            //curl_easy_setopt(curl, CURLOPT_POSTFIELDS, "name=test1&project=test2");
-            curl_easy_setopt(curl, CURLOPT_HTTPHEADER, headers);
-
-
-            curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, writeFunction);
-            curl_easy_setopt(curl, CURLOPT_WRITEDATA, &response_string);
-            curl_easy_setopt(curl, CURLOPT_HEADERDATA, &header_string);
-            std::cout<<"begin to perform......."<<std::endl;
-            /* Perform the request, res will get the return code */
-            res = curl_easy_perform(curl);
-            /* Check for errors */
-            if(res != CURLE_OK)
-                fprintf(stderr, "curl_easy_perform() failed: %s\n",
-                    curl_easy_strerror(res));
-            if(CURLE_OK == res) {
-                char *ct;
-                res = curl_easy_getinfo(curl, CURLINFO_CONTENT_TYPE, &ct);
-                if((CURLE_OK == res) && ct)
-                    printf("We received Content-Type: %s\n", ct);
-            }
-            std::cout << response_string;
-            /* always cleanup */
-            curl_easy_cleanup(curl);
+        if (!json_util::readJson(
+                req, response, "appId", appId,"appKey", appKey, "name",
+                name, "idNum", idNum, "cardNo",cardNo, "mobile", mobile))
+        {
+            return;
         }
+
+//	char * escape_control = curl_escape(name.c_str(), static_cast<int>(name.size()) );
+//        name = escape_control;
+//        curl_free(escape_control);
+
+  CURL *hnd;
+  curl_mime *mime1;
+  curl_mimepart *part1;
+
+  mime1 = NULL;
+
+  hnd = curl_easy_init();
+  curl_easy_setopt(hnd, CURLOPT_BUFFERSIZE, 102400L);
+  curl_easy_setopt(hnd, CURLOPT_URL, "https://api.253.com/open/bankcard/card-auth-detail");
+  curl_easy_setopt(hnd, CURLOPT_NOPROGRESS, 1L);
+
+    std::string response_string;
+    std::string header_string;
+
+  mime1 = curl_mime_init(hnd);
+  part1 = curl_mime_addpart(mime1);
+  curl_mime_data(part1, appId.c_str(), CURL_ZERO_TERMINATED);
+  curl_mime_name(part1, "appId");
+  part1 = curl_mime_addpart(mime1);
+  curl_mime_data(part1, appKey.c_str(), CURL_ZERO_TERMINATED);
+  curl_mime_name(part1, "appKey");
+  part1 = curl_mime_addpart(mime1);
+  curl_mime_data(part1, name.c_str(), CURL_ZERO_TERMINATED);
+  curl_mime_name(part1, "name");
+  part1 = curl_mime_addpart(mime1);
+  curl_mime_data(part1, idNum.c_str(), CURL_ZERO_TERMINATED);
+  curl_mime_name(part1, "idNum");
+  part1 = curl_mime_addpart(mime1);
+  curl_mime_data(part1, cardNo.c_str(), CURL_ZERO_TERMINATED);
+  curl_mime_name(part1, "cardNo");
+  part1 = curl_mime_addpart(mime1);
+  curl_mime_data(part1, mobile.c_str(), CURL_ZERO_TERMINATED);
+  curl_mime_name(part1, "mobile");
+  curl_easy_setopt(hnd, CURLOPT_MIMEPOST, mime1);
+  //curl_easy_setopt(hnd, CURLOPT_USERAGENT, "curl/7.58.0");
+  curl_easy_setopt(hnd, CURLOPT_MAXREDIRS, 50L);
+  curl_easy_setopt(hnd, CURLOPT_VERBOSE, 1L);
+  curl_easy_setopt(hnd, CURLOPT_FTP_SKIP_PASV_IP, 1L);
+  curl_easy_setopt(hnd, CURLOPT_TCP_KEEPALIVE, 1L);
+
+    curl_easy_setopt(hnd, CURLOPT_WRITEFUNCTION, writeFunction);
+    curl_easy_setopt(hnd, CURLOPT_WRITEDATA, &response_string);
+    curl_easy_setopt(hnd, CURLOPT_HEADERDATA, &header_string);
+  /* Here is a list of options the curl code used that cannot get generated
+     as source easily. You may select to either not use them or implement
+     them yourself.
+
+  CURLOPT_WRITEDATA set to a objectpointer
+  CURLOPT_INTERLEAVEDATA set to a objectpointer
+  CURLOPT_WRITEFUNCTION set to a functionpointer
+  CURLOPT_READDATA set to a objectpointer
+  CURLOPT_READFUNCTION set to a functionpointer
+  CURLOPT_SEEKDATA set to a objectpointer
+  CURLOPT_SEEKFUNCTION set to a functionpointer
+  CURLOPT_ERRORBUFFER set to a objectpointer
+  CURLOPT_STDERR set to a objectpointer
+  CURLOPT_DEBUGFUNCTION set to a functionpointer
+  CURLOPT_DEBUGDATA set to a objectpointer
+  CURLOPT_HEADERFUNCTION set to a functionpointer
+  CURLOPT_HEADERDATA set to a objectpointer
+
+  */
+
+  curl_easy_perform(hnd);
+std::cout<<response_string<<std::endl;
+
+  curl_easy_cleanup(hnd);
+  hnd = NULL;
+  curl_mime_free(mime1);
+  mime1 = NULL;
+
         curl_global_cleanup();
         response.jsonValue = nlohmann::json::parse(response_string);
 
         response.end();
     }
+
+
 };
 
 /**
