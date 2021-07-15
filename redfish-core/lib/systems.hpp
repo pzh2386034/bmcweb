@@ -2113,7 +2113,7 @@ void doPost(crow::Response& response, const crow::Request& req,
   curl_easy_setopt(hnd, CURLOPT_MIMEPOST, mime1);
   //curl_easy_setopt(hnd, CURLOPT_USERAGENT, "curl/7.58.0");
   curl_easy_setopt(hnd, CURLOPT_MAXREDIRS, 50L);
-  curl_easy_setopt(hnd, CURLOPT_VERBOSE, 1L);
+  //curl_easy_setopt(hnd, CURLOPT_VERBOSE, 1L);
   curl_easy_setopt(hnd, CURLOPT_FTP_SKIP_PASV_IP, 1L);
   curl_easy_setopt(hnd, CURLOPT_TCP_KEEPALIVE, 1L);
 
@@ -2122,7 +2122,6 @@ void doPost(crow::Response& response, const crow::Request& req,
     curl_easy_setopt(hnd, CURLOPT_HEADERDATA, &header_string);
 
   curl_easy_perform(hnd);
-std::cout<<response_string<<std::endl;
 /*    `name` VARCHAR(15) NOT NULL,
    `idNum` VARCHAR(18) NOT NULL,
    `cardNo` VARCHAR(20) NOT NULL,
@@ -2136,13 +2135,27 @@ std::cout<<response_string<<std::endl;
         curl_global_cleanup();
 
         response.jsonValue = nlohmann::json::parse(response_string);
-    if (response.jsonValue["chargeStatus"] == "1")
+
+    std::cout<<"chargeStatus: "<<response.jsonValue["chargeStatus"] <<std::endl;
+    //std::string chargeStatus = response.jsonValue["chargeStatus"];
+
+    if (response.jsonValue["chargeStatus"] == 1)
     {
+        std::cout<<" begin to insert db"<<std::endl;
         zdb::Connection conn = crow::dbconnections::dbpoll->getConnection();
-        zdb::PreparedStatement p1 = conn.prepareStatement("insert into runoob_tbl (name, idNum, cardNo, mobile, submit_date) values(?, ?, ?, ?, NOW());", name, idNum, cardNo, mobile);
+        zdb::PreparedStatement p1 = conn.prepareStatement("insert into runoob_tbl (name, idNum, cardNo, mobile) values(?, ?, ?, ?);");
         conn.beginTransaction();
+        p1.bind(1, name);
+        p1.bind(2, idNum);
+        p1.bind(3, cardNo); // include terminating \0
+        p1.bind(4, mobile);
+        p1.execute();
         p1.execute();
         conn.commit();
+    }
+    else if(response.jsonValue["chargeStatus"] == 0)
+    {
+        std::cout<<" charge failed."<<std::endl;
     }
 
         response.end();

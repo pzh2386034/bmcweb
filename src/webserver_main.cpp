@@ -28,7 +28,7 @@
 #endif
 
 constexpr int defaultPort = 443;
-std::string sqldb("mysql://localhost:3306/mysql?user=root&password=0penBmc");
+std::string sqldb("mysql://localhost:3306/bankcard?user=root&password=0penBmc");
 
 inline void setupSocket(crow::App& app)
 {

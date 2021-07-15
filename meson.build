@@ -37,7 +37,7 @@ summary('Optimization',optimization, section : 'Build Info')
 if(get_option('buildtype') == 'minsize')
   add_project_arguments('-DNDEBUG', language : 'cpp')
 endif
-
+add_project_arguments('-pthread', language : 'cpp')
 # Disable lto when compiling with no optimization
 if(get_option('optimization') == '0')
   add_project_arguments('-fno-lto', language: 'cpp')
@@ -258,6 +258,7 @@ atomic =  cxx.find_library('atomic', required: true)
 openssl = dependency('openssl', required : true)
 sdbusplus = dependency('sdbusplus',required : false)
 zdb = dependency('zdb', required: true)
+thread_dep = dependency('threads')
 
 if not sdbusplus.found()
   sdbusplus_proj = subproject('sdbusplus', required: true)
@@ -370,9 +371,9 @@ executable('bmcweb',srcfiles_bmcweb,
             include_directories : incdir,
             dependencies: [
                               boost, boost_url, pam, atomic, sdbusplus, openssl,
-                              tinyxml, systemd, zlib, nlohmann_json, zdb
+                              tinyxml, systemd, zlib, nlohmann_json, zdb,thread_dep
                           ],
-	    link_args: '-lcurl',
+	          link_args: '-lcurl',
             install: true,
             install_dir:bindir)
 
