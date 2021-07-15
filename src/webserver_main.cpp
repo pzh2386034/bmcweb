@@ -68,40 +68,6 @@ int main(int /*argc*/, char** /*argv*/)
     // Static assets need to be initialized before Authorization, because auth
     // needs to build the whitelist from the static routes
 
-#ifdef BMCWEB_ENABLE_STATIC_HOSTING
-    crow::webassets::requestRoutes(app);
-#endif
-
-#ifdef BMCWEB_ENABLE_KVM
-    crow::obmc_kvm::requestRoutes(app);
-#endif
-
-#ifdef BMCWEB_ENABLE_REDFISH
-    crow::redfish::requestRoutes(app);
-#endif
-
-#ifdef BMCWEB_ENABLE_DBUS_REST
-    crow::dbus_monitor::requestRoutes(app);
-    crow::image_upload::requestRoutes(app);
-    crow::openbmc_mapper::requestRoutes(app);
-#endif
-
-#ifdef BMCWEB_ENABLE_HOST_SERIAL_WEBSOCKET
-    crow::obmc_console::requestRoutes(app);
-#endif
-
-#ifdef BMCWEB_ENABLE_VM_WEBSOCKET
-    crow::obmc_vm::requestRoutes(app);
-#endif
-
-#ifdef BMCWEB_ENABLE_IBM_MANAGEMENT_CONSOLE
-    crow::ibm_mc::requestRoutes(app);
-    crow::ibm_mc_lock::Lock::getInstance();
-#endif
-
-#ifdef BMCWEB_INSECURE_DISABLE_XSS_PREVENTION
-    cors_preflight::requestRoutes(app);
-#endif
 
     crow::login_routes::requestRoutes(app);
 
@@ -112,20 +78,9 @@ int main(int /*argc*/, char** /*argv*/)
     crow::dbconnections::dbpoll = std::make_shared<zdb::ConnectionPool>(sqldb);
     crow::dbconnections::dbpoll->start();
 
-#ifdef BMCWEB_ENABLE_VM_NBDPROXY
-    crow::nbd_proxy::requestRoutes(app);
-#endif
 
     redfish::RedfishService redfish(app);
 
-#ifndef BMCWEB_ENABLE_REDFISH_DBUS_LOG_ENTRIES
-    int rc = redfish::EventServiceManager::startEventLogMonitor(*io);
-    if (rc)
-    {
-        BMCWEB_LOG_ERROR << "Redfish event handler setup failed...";
-        return rc;
-    }
-#endif
 
     app.run();
     io->run();
