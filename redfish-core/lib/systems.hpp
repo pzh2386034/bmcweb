@@ -30,6 +30,9 @@
 
 #include <curl/curl.h>
 #include "zdb.h"
+#include <ctime>
+#include <uuid/uuid.h>
+
 namespace redfish
 {
 /**
@@ -61,6 +64,7 @@ class Systems : public Node
     {
         res.jsonValue["@odata.type"] = "#ComputerSystem.v1_12_0.ComputerSystem";
         res.jsonValue["Name"] = "Bank Card four essential factor";
+        res.end();
     }
 
     static size_t writeFunction(void* ptr, size_t size, size_t nmemb, std::string* data) {
@@ -176,7 +180,7 @@ class SystemResetActionInfo : public Node
      * Default Constructor
      */
     SystemResetActionInfo(App& app) :
-        Node(app, "/redfish/v1/Systems/system/ResetActionInfo/")
+        Node(app, "/api/nsc/openapi/multipleLoans")
     {
         entityPrivileges = {
             {boost::beast::http::verb::get, {{"Login"}}},
@@ -194,19 +198,72 @@ class SystemResetActionInfo : public Node
     void doGet(crow::Response& res, const crow::Request&,
                const std::vector<std::string>&) override
     {
-        res.jsonValue = {
-            {"@odata.type", "#ActionInfo.v1_1_2.ActionInfo"},
-            {"@odata.id", "/redfish/v1/Systems/system/ResetActionInfo"},
-            {"Name", "Reset Action Info"},
-            {"Id", "ResetActionInfo"},
-            {"Parameters",
-             {{{"Name", "ResetType"},
-               {"Required", true},
-               {"DataType", "String"},
-               {"AllowableValues",
-                {"On", "ForceOff", "ForceOn", "ForceRestart", "GracefulRestart",
-                 "GracefulShutdown", "PowerCycle", "Nmi"}}}}}};
+        res.jsonValue["@odata.type"] = "#ComputerSystem.v1_12_0.ComputerSystem";
+        res.jsonValue["Name"] = "Anti-Fraud Product";
         res.end();
     }
+
+    void doPost(crow::Response& response, const crow::Request& req,
+               const std::vector<std::string>&) override
+    {
+        std::string cardNo;
+        std::string mobile;
+        std::optional<std::string> name("");
+        if (!json_util::readJson(
+                req, response, "cardNo",cardNo, "mobile", mobile, "name", name))
+        {
+            return;
+        }
+        uuid_t  nonce;
+
+        std::time_t t = std::time(0);
+        uuid_generate_random(&nonce);
+        std::string clientId("172409b6-f7df-11ea-be6e-fa163efee3db");
+
+        std::string hdrTimeStamp("Ql-Auth-Timestamp: ");
+        std::string hdrNonce("Ql-Auth-Nonce: ");
+        std::string hdrSign("Ql-Auth-Sign: ");
+        std::string hdrClientId("Ql-Auth-ClientId: ");
+
+        hdrTimeStamp += std::to_string(t);
+        hdrNonce += std::to_string(nonce);
+        hdrSign += 
+
+        BMCWEB_LOG_DEBUG << "timestamp:"<<t;
+
+        CURL *curl;
+        CURLcode res;
+        
+        curl = curl_easy_init();
+        if(curl) {
+            struct curl_slist *chunk = NULL;
+        
+            /* Remove a header curl would otherwise add by itself */
+            chunk = curl_slist_append(chunk, "Accept:");
+        
+            /* Add a custom header */
+            chunk = curl_slist_append(chunk, "Q1-Auth-Timestamp: yes");
+        
+            /* Modify a header curl otherwise adds differently */
+            chunk = curl_slist_append(chunk, "Host: example.com");
+        
+            /* Add a header with "blank" contents to the right of the colon. Note that
+            we're then using a semicolon in the string we pass to curl! */
+            chunk = curl_slist_append(chunk, "X-silly-header;");
+        
+            /* set our custom set of headers */
+            curl_easy_setopt(curl, CURLOPT_HTTPHEADER, chunk);
+        
+            curl_easy_setopt(curl, CURLOPT_URL, "localhost");
+            curl_easy_setopt(curl, CURLOPT_VERBOSE, 1L);
+            //curl_easy_setopt(hnd, CURLOPT_BUFFERSIZE, 1024L);
+            curl_easy_setopt(hnd, CURLOPT_URL, "https://antielectricfraud-prod-api.qunlicloud.com/api/nsc/openapi/multipleLoans");
+            curl_easy_setopt(hnd, CURLOPT_NOPROGRESS, 1L);
+            curl_easy_setopt(hnd, )
+
+
+        }
+    }
+
 };
 } // namespace redfish
