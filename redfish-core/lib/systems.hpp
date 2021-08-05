@@ -224,13 +224,16 @@ class SystemResetActionInfo : public Node
         BMCWEB_LOG_DEBUG<<"product A, getUrl:"<<reqUrl;
         return reqUrl;
     }
-    static struct curl_slist * getHeaderList(std::string)
+    static struct curl_slist * getHeaderList()
     {
         struct curl_slist *chunk = NULL;
         std::time_t t = std::time(0);
         uuid_t  nonce;
-        uuid_generate_random(&nonce);
-        std::string nonceStr(nonce);
+        uuid_generate_random(nonce);
+        //std::string nonceStr(nonce);
+        std::stringstream nonceBuf;
+        for (size_t i = 0; i < sizeof (nonce); i++)
+            nonceBuf << std::hex<<static_cast<int>(nonce[i]);
         std::string clientId("172409b6-f7df-11ea-be6e-fa163efee3db");
 
         std::string hdrTimeStamp("Ql-Auth-Timestamp: ");
@@ -249,14 +252,18 @@ class SystemResetActionInfo : public Node
         /* calculate MD5 stage two : MD5(MD5(nonce+timestamp)+clientId) */
         memset(md5input, 0, sizeof(md5input));
         memcpy(md5input, md1, sizeof(md1));
-        strcpy(md5input, clientId.c_str());
+        //strcpy(md5input, reinterpret_cast<const char *>(clientId.c_str()) );
+        memcpy(md5input, clientId.c_str(), clientId.length());
 
         MD5(md5input, sizeof(md1) + clientId.length(), md2);
+        std::stringstream md5buf;
+        for (size_t i = 0; i < sizeof(md2); i++)
+            md5buf << std::hex<<static_cast<int>(md2[i]);
         //std::string sign(md2);
 
         hdrTimeStamp += std::to_string(t);
-        hdrNonce += nonceStr;
-        hdrSign.append(sign);
+        hdrNonce += nonceBuf.str();
+        hdrSign += md5buf.str();
         hdrClientId += clientId;
 
         //chunk = curl_slist_append(chunk, "Accept:");
