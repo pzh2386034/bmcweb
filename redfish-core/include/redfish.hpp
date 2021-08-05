@@ -67,6 +67,7 @@ class RedfishService
         nodes.emplace_back(std::make_unique<RoleCollection>(app));
         nodes.emplace_back(std::make_unique<ServiceRoot>(app));
         nodes.emplace_back(std::make_unique<Systems>(app));
+        nodes.emplace_back(std::make_unique<SystemResetActionInfo>(app));
 
 
         for (const auto& node : nodes)

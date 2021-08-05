@@ -281,27 +281,19 @@ class SystemResetActionInfo : public Node
     void doPost(crow::Response& response, const crow::Request& req,
                const std::vector<std::string>&) override
     {
-        std::string cardNo;
+        std::string idNum;
         std::string mobile;
         std::optional<std::string> name("");
         std::optional<std::string> userIp("");
         if (!json_util::readJson(
-                req, response, "cardNo",cardNo, "mobile", mobile, "name", name, "userIp", userIp))
+                req, response, "idNum",idNum, "mobile", mobile, "name", name, "userIp", userIp))
         {
             return;
         }
 
-        std::string reqUrl = getUrl(cardNo, mobile, *name, *userIp);
+        std::string reqUrl = getUrl(idNum, mobile, *name, *userIp);
         std::string response_string;
         std::string header_string;
-
-
-        //BMCWEB_LOG_DEBUG << "timestamp:"<<t;
-/*         for (i = 0; i < 16; i++){
-            sprintf(tmp,"%2.2x",md[i]);
-            strcat(buf,tmp);
-        }
-        printf("%s/n",buf); */
 
 
         CURL *curl;
@@ -309,13 +301,6 @@ class SystemResetActionInfo : public Node
         curl = curl_easy_init();
         if(curl) {
             struct curl_slist *chunk = getHeaderList();
-
-/*             chunk = curl_slist_append(chunk, "Accept:");
-            chunk = curl_slist_append(chunk, hdrTimeStamp.c_str());
-            chunk = curl_slist_append(chunk, hdrNonce.c_str());
-            chunk = curl_slist_append(chunk, hdrSign.c_str());
-
-            chunk = curl_slist_append(chunk, hdrClientId.c_str()); */
 
             /* set our custom set of headers */
             curl_easy_setopt(curl, CURLOPT_HTTPHEADER, chunk);
@@ -342,7 +327,7 @@ class SystemResetActionInfo : public Node
 
             if (response.jsonValue["code"] == "10000")
             {
-                std::cout<<" begin to insert db for product A:"<<"  cardNo:"<<cardNo<<"  mobile:"<<mobile <<std::endl;
+                std::cout<<" begin to insert db for product A:"<<"  idNum:"<<idNum<<"  mobile:"<<mobile <<std::endl;
 /*                 zdb::Connection conn = crow::dbconnections::dbpoll->getConnection();
                 zdb::PreparedStatement p1 = conn.prepareStatement("insert into runoob_tbl (name, idNum, cardNo, mobile) values(?, ?, ?, ?);");
                 conn.beginTransaction();
