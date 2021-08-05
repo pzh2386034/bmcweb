@@ -259,6 +259,7 @@ openssl = dependency('openssl', required : true)
 sdbusplus = dependency('sdbusplus',required : false)
 zdb = dependency('zdb', required: true)
 thread_dep = dependency('threads')
+uuid = dependency('uuid')
 
 if not sdbusplus.found()
   sdbusplus_proj = subproject('sdbusplus', required: true)
@@ -371,7 +372,7 @@ executable('bmcweb',srcfiles_bmcweb,
             include_directories : incdir,
             dependencies: [
                               boost, boost_url, pam, atomic, sdbusplus, openssl,
-                              tinyxml, systemd, zlib, nlohmann_json, zdb,thread_dep
+                              tinyxml, systemd, zlib, nlohmann_json, zdb,thread_dep, uuid
                           ],
 	          link_args: '-lcurl',
             install: true,
