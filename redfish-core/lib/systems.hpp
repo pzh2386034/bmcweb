@@ -213,12 +213,12 @@ class SystemResetActionInfo : public Node
         reqUrl += carNo;
         if (name != "")
         {
-            reqUrl += "&name:";
+            reqUrl += "&name=";
             reqUrl += name;
         }
         if (userIp != "")
         {
-            reqUrl += "&userIp:";
+            reqUrl += "&userIp=";
             reqUrl += userIp;
         }
         BMCWEB_LOG_DEBUG<<"product A, getUrl:"<<reqUrl;
@@ -228,6 +228,7 @@ class SystemResetActionInfo : public Node
     {
         struct curl_slist *chunk = NULL;
         std::time_t t = std::time(0);
+        std::string t_string = std::to_string(t);
         uuid_t  nonce;
         uuid_generate_random(nonce);
         //std::string nonceStr(nonce);
@@ -243,30 +244,34 @@ class SystemResetActionInfo : public Node
         /* calculate MD5 stage one : MD5(nonce+timestamp) */
         unsigned char md1[16];
         unsigned char md2[16];
-        unsigned char md5input[100];
-        memset(md5input, 0, sizeof(md5input));
-        memcpy(md5input, nonce, sizeof(uuid_t));
-        memcpy(md5input + sizeof(uuid_t), &t, sizeof(std::time_t));
+        std::stringstream md5input;
 
-        MD5(md5input, sizeof(uuid_t) + sizeof(std::time_t), md1);
+        md5input<<nonceBuf.str()<<t_string;
+        BMCWEB_LOG_ERROR<<"first stage md5input:"<<md5input.str();
+
+        MD5(reinterpret_cast<const unsigned char *>(md5input.str().c_str()), md5input.str().length(), md1);
+
+        std::stringstream md1Buf;
+        for (size_t i = 0; i< sizeof(md1); i++)
+        {
+            md1Buf<<std::hex<<std::setfill('0')<< std::setw(2)<<static_cast<int>(md1[i]);
+        }
+        BMCWEB_LOG_ERROR<<"md5 first stage:"<<md1Buf.str();
+
         /* calculate MD5 stage two : MD5(MD5(nonce+timestamp)+clientId) */
-        memset(md5input, 0, sizeof(md5input));
-        memcpy(md5input, md1, sizeof(md1));
-        //strcpy(md5input, reinterpret_cast<const char *>(clientId.c_str()) );
-        memcpy(md5input, clientId.c_str(), clientId.length());
+        md5input.str("");
+        md5input<<md1Buf.str()<<clientId.c_str();
+        BMCWEB_LOG_ERROR<<"second stage md5input:"<<md5input.str();
 
-        MD5(md5input, sizeof(md1) + clientId.length(), md2);
-        std::stringstream md5buf;
+        MD5(reinterpret_cast<const unsigned char *>(md5input.str().c_str()),  md5input.str().length(), md2);
+        std::stringstream md5Resultbuf;
         for (size_t i = 0; i < sizeof(md2); i++)
-            md5buf << std::hex<<static_cast<int>(md2[i]);
-        //std::string sign(md2);
+            md5Resultbuf << std::hex<<std::setfill('0')<< std::setw(2)<<static_cast<int>(md2[i]);
 
         hdrTimeStamp += std::to_string(t);
         hdrNonce += nonceBuf.str();
-        hdrSign += md5buf.str();
+        hdrSign += md5Resultbuf.str();
         hdrClientId += clientId;
-
-        //chunk = curl_slist_append(chunk, "Accept:");
 
         chunk = curl_slist_append(chunk, hdrTimeStamp.c_str());
 
@@ -284,21 +289,30 @@ class SystemResetActionInfo : public Node
         std::string idNum;
         std::string mobile;
         std::optional<std::string> name("");
+        std::string nameEncode("");
         std::optional<std::string> userIp("");
         if (!json_util::readJson(
                 req, response, "idNum",idNum, "mobile", mobile, "name", name, "userIp", userIp))
         {
             return;
         }
+        CURL *curl;
+        char *output = NULL;
 
-        std::string reqUrl = getUrl(idNum, mobile, *name, *userIp);
+        curl = curl_easy_init();
+        if(name && curl) {
+            output = curl_easy_escape(curl, name->c_str(), name->length());
+            if(output) {
+                nameEncode += output;
+                curl_free(output);
+            }
+        }
+        std::string reqUrl = getUrl(idNum, mobile, nameEncode, *userIp);
         std::string response_string;
         std::string header_string;
 
 
-        CURL *curl;
 
-        curl = curl_easy_init();
         if(curl) {
             struct curl_slist *chunk = getHeaderList();
 
@@ -341,6 +355,7 @@ class SystemResetActionInfo : public Node
             else
             {
                 std::cout<<" query failed:"<<response.jsonValue["code"]<<std::endl;
+                std::cout<<response.jsonValue.dump()<<std::endl;
             }
             response.end();
 
