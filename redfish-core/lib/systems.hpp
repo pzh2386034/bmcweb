@@ -301,7 +301,7 @@ class SystemResetActionInfo : public Node
 
         curl = curl_easy_init();
         if(name && curl) {
-            output = curl_easy_escape(curl, name->c_str(), name->length());
+            output = curl_easy_escape(curl, name->c_str(), static_cast<int>(name->length()) );
             if(output) {
                 nameEncode += output;
                 curl_free(output);
