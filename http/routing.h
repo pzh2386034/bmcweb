@@ -24,6 +24,8 @@
 #include <tuple>
 #include <utility>
 #include <vector>
+#include <grp.h>
+#include <pwd.h>
 
 namespace crow
 {
@@ -1185,6 +1187,34 @@ class Router
             return;
         }
     }
+    
+    static std::vector<std::string> getUserGroups(const std::string& username)
+    {
+        #define MAX_GROUPS    20
+        gid_t list[MAX_GROUPS];
+        struct group * gr;
+        struct passwd *pw;
+        int ngroups = MAX_GROUPS;
+        std::vector<std::string> ret;
+        int x = getgroups(0, list);
+
+        pw = getpwnam(username.c_str());
+        if (pw == NULL) {
+            BMCWEB_LOG_DEBUG<<"getpwnam failed.";
+            return ret;
+        }
+
+        if (getgrouplist(username.c_str(), pw->pw_gid, list, &ngroups) == -1) {
+            BMCWEB_LOG_DEBUG<<"getgrouplist() returned -1; ngroups = "<<ngroups << " username:"<<username;
+            return ret;
+        }
+        for (int i = 0; i< std::min(ngroups, MAX_GROUPS); i++)
+        {
+            gr = getgrgid(list[i]);
+            ret.push_back(gr->gr_name);
+        }
+        return ret;
+    }
 
     void handle(Request& req, Response& res)
     {
@@ -1268,48 +1298,44 @@ class Router
             rules[ruleIndex]->handle(req, res, found.second);
             return;
         }
+        req.userGroups = getUserGroups(req.session->username);
 
-        crow::connections::systemBus->async_method_call(
-            [&req, &res, &rules, ruleIndex, found](
-                const boost::system::error_code ec,
-                std::map<std::string, std::variant<bool, std::string,
-                                                   std::vector<std::string>>>
-                    ) {
-	        if (ec)
-                {
-                    BMCWEB_LOG_ERROR << "GetUserInfo failed...";
-                }
+        std::string userRole("nogroups");
 
-                std::string userRole = "priv-admin";
+        std::vector<std::string>::iterator it = std::find(req.userGroups.begin(), req.userGroups.end(), "adm");
+        if (it != req.userGroups.end()) userRole = "adm";
+        else
+        {
+            std::vector<std::string>::iterator it = std::find(req.userGroups.begin(), req.userGroups.end(), "operator");
+            if (it != req.userGroups.end())
+                std::string userRole = "operator";
+        }
+        BMCWEB_LOG_DEBUG<<"userRole:"<<userRole;
+        // Get the userprivileges from the role
+        redfish::Privileges userPrivileges =
+            redfish::getUserPrivileges(userRole);
 
-                // Get the userprivileges from the role
-                redfish::Privileges userPrivileges =
-                    redfish::getUserPrivileges(userRole);
+        // Set isConfigureSelfOnly based on D-Bus results.  This
+        // ignores the results from both pamAuthenticateUser and the
+        // value from any previous use of this session.
 
-                // Set isConfigureSelfOnly based on D-Bus results.  This
-                // ignores the results from both pamAuthenticateUser and the
-                // value from any previous use of this session.
+        if (!rules[ruleIndex]->checkPrivileges(userPrivileges))
+        {
+            res.result(boost::beast::http::status::forbidden);
+            if (req.session->isConfigureSelfOnly)
+            {
+                redfish::messages::passwordChangeRequired(
+                    res, "/redfish/v1/AccountService/Accounts/" +
+                                req.session->username);
+            }
+            res.end();
+            return;
+        }
 
-                if (!rules[ruleIndex]->checkPrivileges(userPrivileges))
-                {
-                    res.result(boost::beast::http::status::forbidden);
-                    if (req.session->isConfigureSelfOnly)
-                    {
-                        redfish::messages::passwordChangeRequired(
-                            res, "/redfish/v1/AccountService/Accounts/" +
-                                     req.session->username);
-                    }
-                    res.end();
-                    return;
-                }
+        req.userRole = userRole;
 
-                req.userRole = userRole;
-
-                rules[ruleIndex]->handle(req, res, found.second);
-            },
-            "xyz.openbmc_project.User.Manager", "/xyz/openbmc_project/user",
-            "xyz.openbmc_project.User.Manager", "GetUserInfo",
-            req.session->username);
+        rules[ruleIndex]->handle(req, res, found.second);
+            
     }
 
     void debugPrint()

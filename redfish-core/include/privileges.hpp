@@ -207,13 +207,13 @@ class Privileges
 inline const Privileges& getUserPrivileges(const std::string& userRole)
 {
     // Redfish privilege : Administrator
-    if (userRole == "priv-admin")
+    if (userRole == "adm")
     {
         static Privileges admin{"Login", "ConfigureManager", "ConfigureSelf",
                                 "ConfigureUsers", "ConfigureComponents"};
         return admin;
     }
-    else if (userRole == "priv-operator")
+    else if (userRole == "operator")
     {
         // Redfish privilege : Operator
         static Privileges op{"Login", "ConfigureSelf", "ConfigureComponents"};

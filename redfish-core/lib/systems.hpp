@@ -33,6 +33,7 @@
 #include <ctime>
 #include <uuid/uuid.h>
 #include <openssl/md5.h>
+#include <iterator>
 
 namespace redfish
 {
@@ -76,6 +77,13 @@ class Systems : public Node
     void doPost(crow::Response& response, const crow::Request& req,
                const std::vector<std::string>&) override
     {
+        auto it = std::find(std::begin(req.userGroups), std::end(req.userGroups), "productA");
+        if (it == std::end(req.userGroups))
+        {
+            messages::accessDenied(response, "NO PRIVILEGE FOR CARD DETAIL");
+            response.end();
+            return;
+        }
         std::optional<std::string> appId = "ZfI9MbUc";
         std::optional<std::string> appKey = "kC76TpKC";
         std::string name;
@@ -286,6 +294,13 @@ class SystemResetActionInfo : public Node
     void doPost(crow::Response& response, const crow::Request& req,
                const std::vector<std::string>&) override
     {
+        auto it = std::find(req.userGroups.begin(), req.userGroups.end(), "productB");
+        if (it == req.userGroups.end())
+        {
+            messages::accessDenied(response, "NO PRIVILEGE FOR Anti-Fraud");
+            response.end();
+            return;
+        }
         std::string idNum;
         std::string mobile;
         std::optional<std::string> name("");
