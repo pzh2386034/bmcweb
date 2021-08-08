@@ -28,47 +28,20 @@
 #include <boost/process/io.hpp>
 #include <boost/exception/all.hpp>
 #include <exception>
+#include "zdb.h"
+
+const std::map<std::string, std::string> schema {
+        { "productB", "CREATE TABLE ?(id INTEGER AUTO_INCREMENT PRIMARY KEY, name VARCHAR(15) NOT NULL, idNum VARCHAR(18) NOT NULL, cardNo VARCHAR(20) NOT NULL, mobile VARCHAR(11) NOT NULL, ts DATETIME default CURRENT_TIMESTAMP, ip BIGINT NOT NULL , charge boolean NOT NULL) ENGINE=InnoDB;"},
+        { "productA", "CREATE TABLE ?(id INTEGER AUTO_INCREMENT PRIMARY KEY, name VARCHAR(15), idNum VARCHAR(18) NOT NULL, mobile VARCHAR(11) NOT NULL, userip BIGINT NOT NULL , ts DATETIME default CURRENT_TIMESTAMP, ip BIGINT NOT NULL , charge boolean) ENGINE=InnoDB;"},
+        { "userTable", "CREATE TABLE users(id INTEGER AUTO_INCREMENT PRIMARY KEY, username VARCHAR(15) NOT NULL, companyname VARCHAR(50) , contactName VARCHAR(15) , contactmobile VARCHAR(11), email VARCHAR(50), ts DATETIME default CURRENT_TIMESTAMP, product TINYINT NOT NULL,  enabled boolean NOT NULL) ENGINE=InnoDB;"
+        },
+        { "insertUser", "insert into users(username, companyname, contactName, contactmobile, email, product, enabled) values(?, ?, ?, ?, ?, ?, ?);"
+        }
+};
+
+
 namespace redfish
 {
-
-constexpr const char* ldapConfigObjectName =
-    "/xyz/openbmc_project/user/ldap/openldap";
-constexpr const char* adConfigObject =
-    "/xyz/openbmc_project/user/ldap/active_directory";
-
-constexpr const char* ldapRootObject = "/xyz/openbmc_project/user/ldap";
-constexpr const char* ldapDbusService = "xyz.openbmc_project.Ldap.Config";
-constexpr const char* ldapConfigInterface =
-    "xyz.openbmc_project.User.Ldap.Config";
-constexpr const char* ldapCreateInterface =
-    "xyz.openbmc_project.User.Ldap.Create";
-constexpr const char* ldapEnableInterface = "xyz.openbmc_project.Object.Enable";
-constexpr const char* ldapPrivMapperInterface =
-    "xyz.openbmc_project.User.PrivilegeMapper";
-constexpr const char* dbusObjManagerIntf = "org.freedesktop.DBus.ObjectManager";
-constexpr const char* propertyInterface = "org.freedesktop.DBus.Properties";
-constexpr const char* mapperBusName = "xyz.openbmc_project.ObjectMapper";
-constexpr const char* mapperObjectPath = "/xyz/openbmc_project/object_mapper";
-constexpr const char* mapperIntf = "xyz.openbmc_project.ObjectMapper";
-
-struct LDAPRoleMapData
-{
-    std::string groupName;
-    std::string privilege;
-};
-
-struct LDAPConfigData
-{
-    std::string uri{};
-    std::string bindDN{};
-    std::string baseDN{};
-    std::string searchScope{};
-    std::string serverType{};
-    bool serviceEnabled = false;
-    std::string userNameAttribute{};
-    std::string groupAttribute{};
-    std::vector<std::pair<std::string, LDAPRoleMapData>> groupRoleList;
-};
 
 using DbusVariantType = std::variant<bool, int32_t, std::string>;
 
@@ -83,19 +56,15 @@ using GetObjectType =
 
 inline std::string getRoleIdFromPrivilege(std::string_view role)
 {
-    if (role == "priv-admin")
+    if (role == "adm")
     {
         return "Administrator";
     }
-    else if (role == "priv-user")
-    {
-        return "ReadOnly";
-    }
-    else if (role == "priv-operator")
+    else if (role == "operator")
     {
         return "Operator";
     }
-    else if ((role == "") || (role == "priv-noaccess"))
+    else if ((role == "") || (role == "nogroup"))
     {
         return "NoAccess";
     }
@@ -105,19 +74,15 @@ inline std::string getPrivilegeFromRoleId(std::string_view role)
 {
     if (role == "Administrator")
     {
-        return "priv-admin";
-    }
-    else if (role == "ReadOnly")
-    {
-        return "priv-user";
+        return "adm";
     }
     else if (role == "Operator")
     {
-        return "priv-operator";
+        return "operator";
     }
     else if ((role == "NoAccess") || (role == ""))
     {
-        return "priv-noaccess";
+        return "nogroup";
     }
     return "";
 }
@@ -174,6 +139,85 @@ static std::string getCSVFromVector(std::vector<std::string> vec)
         }
     }
 }
+
+static bool addUser2PAM(const std::string &username , \
+                        const std::string passwd, const std::string &groups, const bool enabled)
+{
+    try
+    {
+        executeCmd("/usr/sbin/useradd", username.c_str(), "-G", groups.c_str(),
+                "-N", "-s", "/bin/false", "-e",
+                (enabled == true ? "" : "1970-01-02"));
+    }
+    catch (boost::exception &e)
+    {
+        BMCWEB_LOG_ERROR<<"useradd "<<username.c_str()<<" failed:";
+        return false;
+    }
+
+    if (pamUpdatePassword(username, passwd) != PAM_SUCCESS)
+    {
+        // At this point we have a user that's been created,
+        // but the password set failed.Something is wrong,
+        // so delete the user that we've already created
+        try
+        {
+            executeCmd("/usr/sbin/userdel", username.c_str());
+        }
+        catch (boost::exception &e)
+        {
+            BMCWEB_LOG_ERROR<<"userdel "<<username.c_str()<<" failed:";
+        }
+
+        BMCWEB_LOG_ERROR << "pamUpdatePassword Failed";
+        return false;
+    }
+    return true;
+}
+
+static bool addUser2mysql(const std::string &username, \
+            const std::string compName, const std::string contactUsername, \
+            std::string mobile, std::string email, const std::string  &product, const bool enabled)
+{
+    uint8_t groupid;
+    if (product.compare("productA") == 0) groupid = 1;
+    else groupid =2;
+    std::string tableComm(schema.at(product));
+    tableComm.replace(tableComm.find("?"), 1, username);
+    BMCWEB_LOG_DEBUG<<"tableComm:"<<tableComm;
+    try
+    {
+        zdb::Connection conn = crow::dbconnections::dbpoll->getConnection();
+        zdb::PreparedStatement p1 = conn.prepareStatement((schema.at("insertUser")).c_str());
+        zdb::PreparedStatement p2 = conn.prepareStatement(tableComm.c_str());
+        conn.beginTransaction();
+        p1.bind(1, username);
+        p1.bind(2, compName);
+        p1.bind(3, contactUsername);
+        p1.bind(4, mobile);
+        p1.bind(5, email);
+        p1.bind(6, groupid);
+        p1.bind(7, enabled);
+        p1.execute();
+        p2.execute();
+        conn.commit();
+    } catch (zdb::sql_exception &e)
+    {   
+        BMCWEB_LOG_ERROR<<"add user to users table failed. username:"<< username<<". DELETE new user";
+        try
+        {
+            executeCmd("/usr/sbin/userdel", username.c_str());
+        }
+        catch (boost::exception &e)
+        {
+            BMCWEB_LOG_ERROR<<"userdel "<<username.c_str()<<" failed:";
+        }
+
+        return false;
+    }
+    return true;
+}
+
 class AccountsCollection : public Node
 {
   public:
@@ -260,24 +304,26 @@ class AccountsCollection : public Node
         std::string password;
         std::optional<std::string> roleId("User");
         std::optional<bool> enabled = true;
-        std::optional<std::string> productorGroups("");
+        std::string productGroups;
+        std::optional<std::string> compName("");
+        std::optional<std::string> contactUsername("");
+        std::optional<std::string> mobile("");
+        std::optional<std::string> email("");
         if (!json_util::readJson(req, res, "UserName", username, "Password",
                                  password, "RoleId", roleId, "Enabled",
-                                 enabled, "Groups", productorGroups))
+                                 enabled, "Groups", productGroups, "CompanyName", compName,
+                                 "ContactUsername", contactUsername, "Mobile", mobile, "Email", email))
         {
             return;
         }
-
+        std::vector<std::string> groups;
         std::string priv = getPrivilegeFromRoleId(*roleId);
         if (priv.empty())
         {
             messages::propertyValueNotInList(res, *roleId, "RoleId");
             return;
         }
-        // TODO: Following override will be reverted once support in
-        // phosphor-user-manager is added. In order to avoid dependency issues,
-        // this is added in bmcweb, which will removed, once
-        // phosphor-user-manager supports priv-noaccess.
+
         if (priv == "priv-noaccess")
         {
             roleId = "";
@@ -285,40 +331,41 @@ class AccountsCollection : public Node
         else
         {
             roleId = priv;
+            groups.push_back(priv);
         }
-
         
-        try
+        if (!productGroups.compare("productA") || !productGroups.compare("productB"))
         {
-            executeCmd("/usr/sbin/useradd", username.c_str(), "-G", productorGroups->c_str(),
-                    "-N", "-s", "/bin/false", "-e",
-                    (enabled ? "" : "1970-01-02"));
+            groups.push_back(productGroups);
         }
-        catch (boost::exception &e)
+        else if (productGroups != "")
         {
-            BMCWEB_LOG_ERROR<<"useradd "<<username.c_str()<<" failed:";
-            messages::internalError(res);
-        }
-
-        if (pamUpdatePassword(username, password) !=
-            PAM_SUCCESS)
-        {
-            // At this point we have a user that's been created,
-            // but the password set failed.Something is wrong,
-            // so delete the user that we've already created
-            try
-            {
-                executeCmd("/usr/sbin/userdel", username.c_str());
-            }
-            catch (boost::exception &e)
-            {
-                BMCWEB_LOG_ERROR<<"userdel "<<username.c_str()<<" failed:";
-            }
-
-            BMCWEB_LOG_ERROR << "pamUpdatePassword Failed";
-            messages::internalError(res);
+            messages::propertyValueNotInList(res, productGroups, "Groups");
+            res.end();
             return;
         }
+        std::string groupsStr = getCSVFromVector(groups);
+
+        bool ret = addUser2PAM(username, password, groupsStr, *enabled);
+        if (! ret )
+        {
+            BMCWEB_LOG_ERROR<<"add user to pam failed.";
+            messages::internalError(res);
+            res.end();
+            return;
+        }
+        ret = addUser2mysql(username, *compName, *contactUsername, *mobile, *email, productGroups, *enabled);
+        if (! ret )
+        {
+            BMCWEB_LOG_ERROR<<"add user to mysql user table failed.";
+            messages::internalError(res);
+            res.end();
+            return;
+        }
+
+        messages::success(res);
+        res.end();
+        return;
 
     }
 };
