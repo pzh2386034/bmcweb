@@ -324,6 +324,8 @@ class Connection :
 
         needToCallAfterHandlers = false;
 
+        req->remoteIpAddr = adaptor.next_layer().remote_endpoint().address().to_string();
+
         if (!isInvalidRequest)
         {
             res.completeRequestHandler = [] {};

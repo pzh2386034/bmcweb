@@ -30,6 +30,7 @@ struct Request
 
     std::string userRole{};
     std::vector<std::string> userGroups;
+    std::string remoteIpAddr;
     Request(
         boost::beast::http::request<boost::beast::http::string_body>& reqIn) :
         req(reqIn),

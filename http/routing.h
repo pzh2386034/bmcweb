@@ -1187,7 +1187,7 @@ class Router
             return;
         }
     }
-    
+
     static std::vector<std::string> getUserGroups(const std::string& username)
     {
         #define MAX_GROUPS    20
@@ -1307,8 +1307,7 @@ class Router
         else
         {
             std::vector<std::string>::iterator it = std::find(req.userGroups.begin(), req.userGroups.end(), "operator");
-            if (it != req.userGroups.end())
-                std::string userRole = "operator";
+            if (it != req.userGroups.end()) userRole = "operator";
         }
         BMCWEB_LOG_DEBUG<<"userRole:"<<userRole;
         // Get the userprivileges from the role
@@ -1335,7 +1334,7 @@ class Router
         req.userRole = userRole;
 
         rules[ruleIndex]->handle(req, res, found.second);
-            
+
     }
 
     void debugPrint()

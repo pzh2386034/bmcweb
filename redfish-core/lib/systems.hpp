@@ -34,6 +34,7 @@
 #include <uuid/uuid.h>
 #include <openssl/md5.h>
 #include <iterator>
+#include <arpa/inet.h>
 
 namespace redfish
 {
@@ -73,31 +74,33 @@ class Systems : public Node
         res.end();
     }
 
-
-    void doPost(crow::Response& response, const crow::Request& req,
-               const std::vector<std::string>&) override
+    static void insert2mysql(const std::string &name, const std::string& idNum, const std::string& cardNo, const std::string &mobile, const std::string reqIp, uint8_t charge, const std::string &username)
     {
-        auto it = std::find(std::begin(req.userGroups), std::end(req.userGroups), "productA");
-        if (it == std::end(req.userGroups))
+        std::stringstream sqlBuf;
+        sqlBuf << "insert into "<<username<<"(name, idNum, cardNo, mobile, reqIp, charge) values(?, ?, ?, ?, ?, ?);";
+        try
         {
-            messages::accessDenied(response, "NO PRIVILEGE FOR CARD DETAIL");
-            response.end();
-            return;
+            zdb::Connection conn = crow::dbconnections::dbpoll->getConnection();
+            zdb::PreparedStatement p1 = conn.prepareStatement(sqlBuf.str().c_str());
+            conn.beginTransaction();
+            p1.bind(1, name);
+            p1.bind(2, idNum);
+            p1.bind(3, cardNo); // include terminating \0
+            p1.bind(4, mobile);
+            p1.bind(5, reqIp);
+            p1.bind(6, charge);
+            p1.execute();
+            conn.commit();
         }
-        std::optional<std::string> appId = "ZfI9MbUc";
-        std::optional<std::string> appKey = "kC76TpKC";
-        std::string name;
-        std::string idNum;
-        std::string cardNo;
-        std::string mobile;
-
-        if (!json_util::readJson(
-                req, response, "appId", appId,"appKey", appKey, "name",
-                name, "idNum", idNum, "cardNo",cardNo, "mobile", mobile))
+        catch(zdb::sql_exception &e)
         {
-            return;
+            throw(e);
         }
+        return;
+    }
 
+    static void curlComm(const std::string &appId, const std::string &appKey, const std::string &name, const std::string & idNum, const std::string &cardNo, const std::string &mobile, std::string &response_string, std::string &header_string)
+    {
         CURL *hnd;
         curl_mime *mime1;
         curl_mimepart *part1;
@@ -109,15 +112,12 @@ class Systems : public Node
         curl_easy_setopt(hnd, CURLOPT_URL, "https://api.253.com/open/bankcard/card-auth-detail");
         curl_easy_setopt(hnd, CURLOPT_NOPROGRESS, 1L);
 
-        std::string response_string;
-        std::string header_string;
-
         mime1 = curl_mime_init(hnd);
         part1 = curl_mime_addpart(mime1);
-        curl_mime_data(part1, (*appId).c_str(), CURL_ZERO_TERMINATED);
+        curl_mime_data(part1, appId.c_str(), CURL_ZERO_TERMINATED);
         curl_mime_name(part1, "appId");
         part1 = curl_mime_addpart(mime1);
-        curl_mime_data(part1, (*appKey).c_str(), CURL_ZERO_TERMINATED);
+        curl_mime_data(part1, appKey.c_str(), CURL_ZERO_TERMINATED);
         curl_mime_name(part1, "appKey");
         part1 = curl_mime_addpart(mime1);
         curl_mime_data(part1, name.c_str(), CURL_ZERO_TERMINATED);
@@ -148,28 +148,49 @@ class Systems : public Node
         hnd = NULL;
         curl_mime_free(mime1);
         mime1 = NULL;
-        curl_global_cleanup();
+
+    }
+
+    void doPost(crow::Response& response, const crow::Request& req,
+               const std::vector<std::string>&) override
+    {
+        auto it = std::find(std::begin(req.userGroups), std::end(req.userGroups), "productB");
+        if (it == std::end(req.userGroups))
+        {
+            messages::accessDenied(response, "NO PRIVILEGE FOR CARD DETAIL");
+            response.end();
+            return;
+        }
+        std::optional<std::string> appId = "ZfI9MbUc";
+        std::optional<std::string> appKey = "kC76TpKC";
+        std::string name;
+        std::string idNum;
+        std::string cardNo;
+        std::string mobile;
+
+        if (!json_util::readJson(
+                req, response, "appId", appId,"appKey", appKey, "name",
+                name, "idNum", idNum, "cardNo",cardNo, "mobile", mobile))
+        {
+            response.end();
+            return;
+        }
+        std::string response_string;
+        std::string header_string;
+
+        curlComm(*appId, *appKey, name, idNum, cardNo, mobile, response_string, header_string);
 
         response.jsonValue = nlohmann::json::parse(response_string);
 
-        std::cout<<"chargeStatus: "<<response.jsonValue["chargeStatus"] <<std::endl;
-
-        if (response.jsonValue["chargeStatus"] == 1)
+        //::ffff:121.35.103.241
+        try
         {
-            //std::cout<<" begin to insert db:"<< "name:"<<name<<" idNum:"<<idNum<<"  cardNo:"<<cardNo<<"  mobile:"<<mobile <<std::endl;
-            zdb::Connection conn = crow::dbconnections::dbpoll->getConnection();
-            zdb::PreparedStatement p1 = conn.prepareStatement("insert into runoob_tbl (name, idNum, cardNo, mobile) values(?, ?, ?, ?);");
-            conn.beginTransaction();
-            p1.bind(1, name);
-            p1.bind(2, idNum);
-            p1.bind(3, cardNo); // include terminating \0
-            p1.bind(4, mobile);
-            p1.execute();
-            conn.commit();
+            insert2mysql(name, idNum, cardNo, mobile, req.remoteIpAddr.substr(7), static_cast<uint8_t>(response.jsonValue["chargeStatus"]), req.session->username);
         }
-        else if(response.jsonValue["chargeStatus"] == 0)
+        catch(const std::exception& e)
         {
-            std::cout<<" charge failed."<<std::endl;
+            BMCWEB_LOG_CRITICAL<<"productB intert data into mysql failed. username:"<<req.session->username;
+            BMCWEB_LOG_CRITICAL<<e.what();
         }
 
         response.end();
@@ -211,14 +232,14 @@ class SystemResetActionInfo : public Node
         res.jsonValue["Name"] = "Anti-Fraud Product";
         res.end();
     }
-    static std::string getUrl(std::string carNo, std::string mobile, std::string name, std::string userIp)
+    static std::string getUrl(std::string idNum, std::string mobile, std::string name, std::string userIp)
     {
         std::string reqUrl("https://antielectricfraud-prod-api.qunlicloud.com/api/nsc/openapi/multipleLoans?");
         reqUrl += "phoneNumber=";
         reqUrl += mobile;
         reqUrl += "&";
         reqUrl += "idNumber=";
-        reqUrl += carNo;
+        reqUrl += idNum;
         if (name != "")
         {
             reqUrl += "&name=";
@@ -232,6 +253,7 @@ class SystemResetActionInfo : public Node
         BMCWEB_LOG_DEBUG<<"product A, getUrl:"<<reqUrl;
         return reqUrl;
     }
+
     static struct curl_slist * getHeaderList()
     {
         struct curl_slist *chunk = NULL;
@@ -291,10 +313,38 @@ class SystemResetActionInfo : public Node
 
         return chunk;
     }
+
+    static void insert2mysql(const std::string &name, const std::string& idNum, const std::string &mobile, const std::string & userIP ,const std::string reqIp, uint8_t charge, const std::string &username)
+    {
+        std::stringstream sqlBuf;
+        sqlBuf << "insert into "<<username<<"(name, idNum, mobile, userIp, reqIp, charge) values(?, ?, ?, ?, ?, ?);";
+        BMCWEB_LOG_DEBUG<<sqlBuf.str();
+        BMCWEB_LOG_CRITICAL<<"*******:"<<sqlBuf.str();
+        try
+        {
+            zdb::Connection conn = crow::dbconnections::dbpoll->getConnection();
+            zdb::PreparedStatement p1 = conn.prepareStatement(sqlBuf.str().c_str());
+            conn.beginTransaction();
+            p1.bind(1, name);
+            p1.bind(2, idNum);
+            p1.bind(3, mobile);
+            p1.bind(4, userIP);
+            p1.bind(5, reqIp);
+            p1.bind(6, charge);
+            p1.execute();
+            conn.commit();
+        }
+        catch(zdb::sql_exception &e)
+        {
+            throw(e);
+        }
+        return;
+    }
+
     void doPost(crow::Response& response, const crow::Request& req,
                const std::vector<std::string>&) override
     {
-        auto it = std::find(req.userGroups.begin(), req.userGroups.end(), "productB");
+        auto it = std::find(req.userGroups.begin(), req.userGroups.end(), "productA");
         if (it == req.userGroups.end())
         {
             messages::accessDenied(response, "NO PRIVILEGE FOR Anti-Fraud");
@@ -309,6 +359,7 @@ class SystemResetActionInfo : public Node
         if (!json_util::readJson(
                 req, response, "idNum",idNum, "mobile", mobile, "name", name, "userIp", userIp))
         {
+            response.end();
             return;
         }
         CURL *curl;
@@ -325,8 +376,6 @@ class SystemResetActionInfo : public Node
         std::string reqUrl = getUrl(idNum, mobile, nameEncode, *userIp);
         std::string response_string;
         std::string header_string;
-
-
 
         if(curl) {
             struct curl_slist *chunk = getHeaderList();
@@ -348,36 +397,34 @@ class SystemResetActionInfo : public Node
             curl_easy_cleanup(curl);
             curl = NULL;
             curl_slist_free_all(chunk);
-            curl_global_cleanup();
 
             response.jsonValue = nlohmann::json::parse(response_string);
 
             std::cout<<"code: "<<response.jsonValue["code"] <<std::endl;
 
-            if (response.jsonValue["code"] == "10000")
+            uint8_t charge = 0;
+            if (response.jsonValue["code"] == "10000" && response.jsonValue["data"] != "")
             {
-                std::cout<<" begin to insert db for product A:"<<"  idNum:"<<idNum<<"  mobile:"<<mobile <<std::endl;
-/*                 zdb::Connection conn = crow::dbconnections::dbpoll->getConnection();
-                zdb::PreparedStatement p1 = conn.prepareStatement("insert into runoob_tbl (name, idNum, cardNo, mobile) values(?, ?, ?, ?);");
-                conn.beginTransaction();
-                p1.bind(1, name);
-                p1.bind(2, idNum);
-                p1.bind(3, cardNo); // include terminating \0
-                p1.bind(4, mobile);
-                p1.execute();
-                conn.commit(); */
+                charge = 1;
             }
-            else
+//insert2mysql(const std::string &name, const std::string& idNum, const std::string& cardNo, const std::string &mobile, const std::string & userIP ,const std::string reqIp, uint8_t charge, const std::string &username)
+            try
             {
-                std::cout<<" query failed:"<<response.jsonValue["code"]<<std::endl;
-                std::cout<<response.jsonValue.dump()<<std::endl;
+                insert2mysql(*name, idNum, mobile, *userIp, req.remoteIpAddr.substr(7), charge, req.session->username);
             }
+            catch(const std::exception& e)
+            {
+                BMCWEB_LOG_CRITICAL<<"productB intert data into mysql failed. username:"<<req.session->username;
+                BMCWEB_LOG_CRITICAL<<e.what();
+            }
+
             response.end();
 
         }
         else
         {
             messages::serviceInUnknownState(response);
+            response.end();
             return;
         }
     }

@@ -31,8 +31,8 @@
 #include "zdb.h"
 
 const std::map<std::string, std::string> schema {
-        { "productB", "CREATE TABLE ?(id INTEGER AUTO_INCREMENT PRIMARY KEY, name VARCHAR(15) NOT NULL, idNum VARCHAR(18) NOT NULL, cardNo VARCHAR(20) NOT NULL, mobile VARCHAR(11) NOT NULL, ts DATETIME default CURRENT_TIMESTAMP, ip BIGINT NOT NULL , charge boolean NOT NULL) ENGINE=InnoDB;"},
-        { "productA", "CREATE TABLE ?(id INTEGER AUTO_INCREMENT PRIMARY KEY, name VARCHAR(15), idNum VARCHAR(18) NOT NULL, mobile VARCHAR(11) NOT NULL, userip BIGINT NOT NULL , ts DATETIME default CURRENT_TIMESTAMP, ip BIGINT NOT NULL , charge boolean) ENGINE=InnoDB;"},
+        { "productB", "CREATE TABLE ?(id INTEGER AUTO_INCREMENT PRIMARY KEY, name VARCHAR(15) NOT NULL, idNum VARCHAR(18) NOT NULL, cardNo VARCHAR(20) NOT NULL, mobile VARCHAR(11) NOT NULL, ts DATETIME default CURRENT_TIMESTAMP, reqIp VARCHAR(15) NOT NULL , charge boolean NOT NULL) ENGINE=InnoDB;"},
+        { "productA", "CREATE TABLE ?(id INTEGER AUTO_INCREMENT PRIMARY KEY, name VARCHAR(15), idNum VARCHAR(18) NOT NULL, mobile VARCHAR(11) NOT NULL, userIp VARCHAR(15) NOT NULL , ts DATETIME default CURRENT_TIMESTAMP, reqIp VARCHAR(15) NOT NULL , charge boolean) ENGINE=InnoDB;"},
         { "userTable", "CREATE TABLE users(id INTEGER AUTO_INCREMENT PRIMARY KEY, username VARCHAR(15) NOT NULL, companyname VARCHAR(50) , contactName VARCHAR(15) , contactmobile VARCHAR(11), email VARCHAR(50), ts DATETIME default CURRENT_TIMESTAMP, product TINYINT NOT NULL,  enabled boolean NOT NULL) ENGINE=InnoDB;"
         },
         { "insertUser", "insert into users(username, companyname, contactName, contactmobile, email, product, enabled) values(?, ?, ?, ?, ?, ?, ?);"
@@ -202,7 +202,7 @@ static bool addUser2mysql(const std::string &username, \
         p2.execute();
         conn.commit();
     } catch (zdb::sql_exception &e)
-    {   
+    {
         BMCWEB_LOG_ERROR<<"add user to users table failed. username:"<< username<<". DELETE new user";
         try
         {
@@ -314,6 +314,7 @@ class AccountsCollection : public Node
                                  enabled, "Groups", productGroups, "CompanyName", compName,
                                  "ContactUsername", contactUsername, "Mobile", mobile, "Email", email))
         {
+            res.end();
             return;
         }
         std::vector<std::string> groups;
@@ -333,7 +334,7 @@ class AccountsCollection : public Node
             roleId = priv;
             groups.push_back(priv);
         }
-        
+
         if (!productGroups.compare("productA") || !productGroups.compare("productB"))
         {
             groups.push_back(productGroups);

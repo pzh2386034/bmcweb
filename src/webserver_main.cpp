@@ -22,6 +22,7 @@
 
 #include <memory>
 #include <string>
+#include "curl/curl.h"
 
 #ifdef BMCWEB_ENABLE_VM_NBDPROXY
 #include <nbd_proxy.hpp>
@@ -72,7 +73,7 @@ int main(int /*argc*/, char** /*argv*/)
     crow::login_routes::requestRoutes(app);
 
     setupSocket(app);
-
+    curl_global_init(CURL_GLOBAL_ALL);
     crow::connections::systemBus =
         std::make_shared<sdbusplus::asio::connection>(*io);
     crow::dbconnections::dbpoll = std::make_shared<zdb::ConnectionPool>(sqldb);
