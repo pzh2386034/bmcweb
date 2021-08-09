@@ -403,11 +403,22 @@ class SystemResetActionInfo : public Node
             std::cout<<"code: "<<response.jsonValue["code"] <<std::endl;
 
             uint8_t charge = 0;
-            if (response.jsonValue["code"] == "10000" && response.jsonValue["data"] != "")
+            if (response.jsonValue["code"] == "10000" && response.jsonValue["data"].is_array() )
             {
-                charge = 1;
+                nlohmann::json jsonArr = response.jsonValue["data"];
+
+                for (json::iterator it = jsonArr.begin(); it != jsonArr.end(); ++it) {
+                    nlohmann::json j = json::parse(it);
+
+                    std::vector<nlohmann::json> *dataArr =  response.jsonValue["data"].get<std::vector<nlohmann::json> >();
+                    if (dataArr->size() != 0)
+                        charge = 1;
+                    else
+                        BMCWEB_LOG_DEBUG<<"productB no data, not charge.";
+                    std::cout << *it << '\n';
+                }
+
             }
-//insert2mysql(const std::string &name, const std::string& idNum, const std::string& cardNo, const std::string &mobile, const std::string & userIP ,const std::string reqIp, uint8_t charge, const std::string &username)
             try
             {
                 insert2mysql(*name, idNum, mobile, *userIp, req.remoteIpAddr.substr(7), charge, req.session->username);
