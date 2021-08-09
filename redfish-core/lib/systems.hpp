@@ -74,10 +74,10 @@ class Systems : public Node
         res.end();
     }
 
-    static void insert2mysql(const std::string &name, const std::string& idNum, const std::string& cardNo, const std::string &mobile, const std::string reqIp, uint8_t charge, const std::string &username)
+    static void insert2mysql(const std::string &name, const std::string& idNum, const std::string& cardNo, const std::string &mobile, const std::string reqIp, uint8_t charge, int &queryCode, const std::string &username)
     {
         std::stringstream sqlBuf;
-        sqlBuf << "insert into "<<username<<"(name, idNum, cardNo, mobile, reqIp, charge) values(?, ?, ?, ?, ?, ?);";
+        sqlBuf << "insert into "<<username<<"(name, idNum, cardNo, mobile, reqIp, charge, queryCode) values(?, ?, ?, ?, ?, ?, ?);";
         try
         {
             zdb::Connection conn = crow::dbconnections::dbpoll->getConnection();
@@ -89,6 +89,7 @@ class Systems : public Node
             p1.bind(4, mobile);
             p1.bind(5, reqIp);
             p1.bind(6, charge);
+            p1.bind(7, queryCode);
             p1.execute();
             conn.commit();
         }
@@ -99,7 +100,7 @@ class Systems : public Node
         return;
     }
 
-    static void curlComm(const std::string &appId, const std::string &appKey, const std::string &name, const std::string & idNum, const std::string &cardNo, const std::string &mobile, std::string &response_string, std::string &header_string)
+    static bool curlComm(const std::string &appId, const std::string &appKey, const std::string &name, const std::string & idNum, const std::string &cardNo, const std::string &mobile, std::string &response_string, std::string &header_string)
     {
         CURL *hnd;
         curl_mime *mime1;
@@ -108,6 +109,11 @@ class Systems : public Node
         mime1 = NULL;
 
         hnd = curl_easy_init();
+        if (!hnd) 
+        {
+            BMCWEB_LOG_CRITICAL<<"curl_easy_init failed.";
+            return false;
+        }
         curl_easy_setopt(hnd, CURLOPT_BUFFERSIZE, 102400L);
         curl_easy_setopt(hnd, CURLOPT_URL, "https://api.253.com/open/bankcard/card-auth-detail");
         curl_easy_setopt(hnd, CURLOPT_NOPROGRESS, 1L);
@@ -148,7 +154,7 @@ class Systems : public Node
         hnd = NULL;
         curl_mime_free(mime1);
         mime1 = NULL;
-
+        return true;
     }
 
     void doPost(crow::Response& response, const crow::Request& req,
@@ -177,15 +183,23 @@ class Systems : public Node
         }
         std::string response_string;
         std::string header_string;
+        uint8_t charge = 0;
+        int code = 0;
 
-        curlComm(*appId, *appKey, name, idNum, cardNo, mobile, response_string, header_string);
+        bool ret = curlComm(*appId, *appKey, name, idNum, cardNo, mobile, response_string, header_string);
+        if (! ret)
+        {
+            messages::internalError(response);
+            response.end();
+            return;
+        }
 
         response.jsonValue = nlohmann::json::parse(response_string);
 
         //::ffff:121.35.103.241
         try
         {
-            insert2mysql(name, idNum, cardNo, mobile, req.remoteIpAddr.substr(7), static_cast<uint8_t>(response.jsonValue["chargeStatus"]), req.session->username);
+            insert2mysql(name, idNum, cardNo, mobile, req.remoteIpAddr.substr(7), static_cast<uint8_t>(response.jsonValue["chargeStatus"]), code, req.session->username);
         }
         catch(const std::exception& e)
         {
@@ -314,10 +328,10 @@ class SystemResetActionInfo : public Node
         return chunk;
     }
 
-    static void insert2mysql(const std::string &name, const std::string& idNum, const std::string &mobile, const std::string & userIP ,const std::string reqIp, uint8_t charge, const std::string &username)
+    static void insert2mysql(const std::string &name, const std::string& idNum, const std::string &mobile, const std::string & userIP ,const std::string reqIp, uint8_t charge, int &code , const std::string &username)
     {
         std::stringstream sqlBuf;
-        sqlBuf << "insert into "<<username<<"(name, idNum, mobile, userIp, reqIp, charge) values(?, ?, ?, ?, ?, ?);";
+        sqlBuf << "insert into "<<username<<"(name, idNum, mobile, userIp, reqIp, charge, queryCode) values(?, ?, ?, ?, ?, ?, ?);";
         BMCWEB_LOG_DEBUG<<sqlBuf.str();
         BMCWEB_LOG_CRITICAL<<"*******:"<<sqlBuf.str();
         try
@@ -331,6 +345,7 @@ class SystemResetActionInfo : public Node
             p1.bind(4, userIP);
             p1.bind(5, reqIp);
             p1.bind(6, charge);
+            p1.bind(7, code);
             p1.execute();
             conn.commit();
         }
@@ -339,6 +354,51 @@ class SystemResetActionInfo : public Node
             throw(e);
         }
         return;
+    }
+
+    static bool curlComm(const std::string &idNum, const std::string &mobile, const std::string &name, const std::string &userIp, std::string& response_string, std::string &header_string)
+    {
+        CURL *curl;
+        char *output = NULL;
+        std::string nameEncode("");
+
+
+        curl = curl_easy_init();
+        if (! curl)
+        {
+            BMCWEB_LOG_CRITICAL<<"curl_easy_init failed.";
+            return false;
+        }
+        if(name != "") {
+            output = curl_easy_escape(curl, name.c_str(), static_cast<int>(name.length()) );
+            if(output) {
+                nameEncode += output;
+                curl_free(output);
+            }
+        }
+        std::string reqUrl = getUrl(idNum, mobile, nameEncode, userIp);
+
+        struct curl_slist *chunk = getHeaderList();
+
+        /* set our custom set of headers */
+        curl_easy_setopt(curl, CURLOPT_HTTPHEADER, chunk);
+
+        curl_easy_setopt(curl, CURLOPT_VERBOSE, 1L);
+        //curl_easy_setopt(hnd, CURLOPT_BUFFERSIZE, 1024L);
+        curl_easy_setopt(curl, CURLOPT_URL, reqUrl.c_str());
+        curl_easy_setopt(curl, CURLOPT_NOPROGRESS, 1L);
+
+        curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, writeFunction);
+        curl_easy_setopt(curl, CURLOPT_WRITEDATA, &response_string);
+        curl_easy_setopt(curl, CURLOPT_HEADERDATA, &header_string);
+
+        curl_easy_perform(curl);
+
+        curl_easy_cleanup(curl);
+        curl = NULL;
+        curl_slist_free_all(chunk);
+
+        return true;
     }
 
     void doPost(crow::Response& response, const crow::Request& req,
@@ -354,7 +414,6 @@ class SystemResetActionInfo : public Node
         std::string idNum;
         std::string mobile;
         std::optional<std::string> name("");
-        std::string nameEncode("");
         std::optional<std::string> userIp("");
         if (!json_util::readJson(
                 req, response, "idNum",idNum, "mobile", mobile, "name", name, "userIp", userIp))
@@ -362,82 +421,50 @@ class SystemResetActionInfo : public Node
             response.end();
             return;
         }
-        CURL *curl;
-        char *output = NULL;
-
-        curl = curl_easy_init();
-        if(name && curl) {
-            output = curl_easy_escape(curl, name->c_str(), static_cast<int>(name->length()) );
-            if(output) {
-                nameEncode += output;
-                curl_free(output);
-            }
+        if (name->length() > 15)
+        {
+            messages::queryParameterOutOfRange(response, *name, "name", "length <= 15");
+            response.end();
         }
-        std::string reqUrl = getUrl(idNum, mobile, nameEncode, *userIp);
         std::string response_string;
         std::string header_string;
+        uint8_t charge = 0;
+        int code = 0;
 
-        if(curl) {
-            struct curl_slist *chunk = getHeaderList();
-
-            /* set our custom set of headers */
-            curl_easy_setopt(curl, CURLOPT_HTTPHEADER, chunk);
-
-            curl_easy_setopt(curl, CURLOPT_VERBOSE, 1L);
-            //curl_easy_setopt(hnd, CURLOPT_BUFFERSIZE, 1024L);
-            curl_easy_setopt(curl, CURLOPT_URL, reqUrl.c_str());
-            curl_easy_setopt(curl, CURLOPT_NOPROGRESS, 1L);
-
-            curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, writeFunction);
-            curl_easy_setopt(curl, CURLOPT_WRITEDATA, &response_string);
-            curl_easy_setopt(curl, CURLOPT_HEADERDATA, &header_string);
-
-            curl_easy_perform(curl);
-
-            curl_easy_cleanup(curl);
-            curl = NULL;
-            curl_slist_free_all(chunk);
-
-            response.jsonValue = nlohmann::json::parse(response_string);
-
-            std::cout<<"code: "<<response.jsonValue["code"] <<std::endl;
-
-            uint8_t charge = 0;
-            if (response.jsonValue["code"] == "10000" && response.jsonValue["data"].is_array() )
-            {
-                nlohmann::json jsonArr = response.jsonValue["data"];
-
-                for (json::iterator it = jsonArr.begin(); it != jsonArr.end(); ++it) {
-                    nlohmann::json j = json::parse(it);
-
-                    std::vector<nlohmann::json> *dataArr =  response.jsonValue["data"].get<std::vector<nlohmann::json> >();
-                    if (dataArr->size() != 0)
-                        charge = 1;
-                    else
-                        BMCWEB_LOG_DEBUG<<"productB no data, not charge.";
-                    std::cout << *it << '\n';
-                }
-
-            }
-            try
-            {
-                insert2mysql(*name, idNum, mobile, *userIp, req.remoteIpAddr.substr(7), charge, req.session->username);
-            }
-            catch(const std::exception& e)
-            {
-                BMCWEB_LOG_CRITICAL<<"productB intert data into mysql failed. username:"<<req.session->username;
-                BMCWEB_LOG_CRITICAL<<e.what();
-            }
-
-            response.end();
-
-        }
-        else
+        if (!curlComm(idNum, mobile, *name, *userIp, response_string ,header_string))
         {
             messages::serviceInUnknownState(response);
-            response.end();
-            return;
+            code = 101;
         }
+
+        try
+        {
+            response.jsonValue = nlohmann::json::parse(response_string);
+            if (response.jsonValue["code"] == "10000" && response.jsonValue["data"].is_array() && ! response.jsonValue["data"].empty())
+            {
+                charge = 1;
+            }
+        }
+        catch(const std::exception& e)
+        {
+            BMCWEB_LOG_CRITICAL << e.what();
+            messages::operationFailed(response);
+            code = 102;
+        }
+        
+        try
+        {
+            insert2mysql(*name, idNum, mobile, *userIp, req.remoteIpAddr.substr(7), charge, code, req.session->username);
+        }
+        catch(const std::exception& e)
+        {
+            BMCWEB_LOG_CRITICAL<<"productB intert data into mysql failed. username:"<<req.session->username;
+            BMCWEB_LOG_CRITICAL<<e.what();
+        }
+
+        response.end();
+
+        return;
     }
 
 };

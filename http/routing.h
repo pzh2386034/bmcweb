@@ -1196,7 +1196,6 @@ class Router
         struct passwd *pw;
         int ngroups = MAX_GROUPS;
         std::vector<std::string> ret;
-        int x = getgroups(0, list);
 
         pw = getpwnam(username.c_str());
         if (pw == NULL) {
