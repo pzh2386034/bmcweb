@@ -58,3 +58,6 @@ certificate
  - has a random serial number, and
  - is signed using the `SHA-256` algorithm.
 
+### ab test
+ab -n 100 -c 5 -T 'application/json' -p testB.json -A pzhtestA6:Huawei12#$ https://81.68.141.96/api/nsc/openapi/multipleLoans
+ab -n 100 -c 5 -T 'application/json' -p testA.json -A abtestB6:Huawei12#$ https://81.68.141.96/open/bankcard/card-auth-detail 
