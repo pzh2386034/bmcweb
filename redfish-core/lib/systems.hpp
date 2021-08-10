@@ -294,21 +294,28 @@ class SystemResetActionInfo : public Node
     static std::string getUrl(std::string idNum, std::string mobile, std::string name, std::string userIp)
     {
         std::string reqUrl("https://antielectricfraud-prod-api.qunlicloud.com/api/nsc/openapi/multipleLoans?");
-        reqUrl += "phoneNumber=";
-        reqUrl += mobile;
-        reqUrl += "&";
-        reqUrl += "idNumber=";
-        reqUrl += idNum;
+        if (mobile != "")
+        {
+            reqUrl += "phoneNumber=";
+            reqUrl += mobile;
+        }
+        if (userIp != "")
+        {
+            if (mobile == "") reqUrl += "userIp=";
+            else reqUrl += "&userIp=";
+            reqUrl += userIp;
+        }
+        if (idNum != "")
+        {
+            reqUrl += "&idNumber=";
+            reqUrl += idNum;
+        }
         if (name != "")
         {
             reqUrl += "&name=";
             reqUrl += name;
         }
-        if (userIp != "")
-        {
-            reqUrl += "&userIp=";
-            reqUrl += userIp;
-        }
+
         BMCWEB_LOG_DEBUG<<"product A, getUrl:"<<reqUrl;
         return reqUrl;
     }
@@ -467,6 +474,11 @@ class SystemResetActionInfo : public Node
             messages::queryParameterOutOfRange(response, userIp, "userIp", "userIp <= 15");
             return false;
         }
+        if (userIp == "" && mobile == "")
+        {
+            messages::unrecognizedRequestBody(response);
+            return false;
+        }
         return true;
     }
     void doPost(crow::Response& response, const crow::Request& req,
@@ -479,8 +491,8 @@ class SystemResetActionInfo : public Node
             response.end();
             return;
         }
-        std::string idNum;
-        std::string mobile;
+        std::optional<std::string> idNum("");
+        std::optional<std::string> mobile("");
         std::optional<std::string> name("");
         std::optional<std::string> userIp("");
         if (!json_util::readJson(
@@ -489,7 +501,7 @@ class SystemResetActionInfo : public Node
             response.end();
             return;
         }
-        bool ret = checkParam(response, idNum, mobile, *name, *userIp);
+        bool ret = checkParam(response, *idNum, *mobile, *name, *userIp);
         if (ret != true)
         {
             response.end();
@@ -500,7 +512,7 @@ class SystemResetActionInfo : public Node
         uint8_t charge = 0;
         int code = 0;
 
-        if (!curlComm(idNum, mobile, *name, *userIp, response_string ,header_string))
+        if (!curlComm(*idNum, *mobile, *name, *userIp, response_string ,header_string))
         {
             messages::serviceInUnknownState(response);
             code = ERROR_CURL_COMM;
@@ -524,7 +536,7 @@ class SystemResetActionInfo : public Node
 
         try
         {
-            insert2mysql(*name, idNum, mobile, *userIp, req.remoteIpAddr.substr(7), charge, code, req.session->username);
+            insert2mysql(*name, *idNum, *mobile, *userIp, req.remoteIpAddr.substr(7), charge, code, req.session->username);
         }
         catch(const std::exception& e)
         {
