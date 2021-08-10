@@ -36,6 +36,9 @@
 #include <iterator>
 #include <arpa/inet.h>
 
+#define ERROR_CURL_COMM    101
+#define ERROR_JSON_PARSE   102
+
 namespace redfish
 {
 /**
@@ -109,7 +112,7 @@ class Systems : public Node
         mime1 = NULL;
 
         hnd = curl_easy_init();
-        if (!hnd) 
+        if (!hnd)
         {
             BMCWEB_LOG_CRITICAL<<"curl_easy_init failed.";
             return false;
@@ -157,6 +160,31 @@ class Systems : public Node
         return true;
     }
 
+    static bool checkParam(crow::Response& response, const std::string & idNum, const std::string & mobile, const std::string& cardNo, const std::string & name)
+    {
+        if (name.length() > 15)
+        {
+            messages::queryParameterOutOfRange(response, name, "name", "length <= 15");
+            return false;
+        }
+        if (idNum.length() > 18)
+        {
+            messages::queryParameterOutOfRange(response, idNum, "idNum", "length <= 18");
+            return false;
+        }
+        if (mobile.length() > 11)
+        {
+            messages::queryParameterOutOfRange(response, mobile, "mobile", "mobile <= 11");
+            return false;
+        }
+        if (cardNo.length() > 20)
+        {
+            messages::queryParameterOutOfRange(response, cardNo, "cardNo", "cardNo <= 20");
+            return false;
+        }
+        return true;
+    }
+
     void doPost(crow::Response& response, const crow::Request& req,
                const std::vector<std::string>&) override
     {
@@ -185,21 +213,38 @@ class Systems : public Node
         std::string header_string;
         uint8_t charge = 0;
         int code = 0;
-
-        bool ret = curlComm(*appId, *appKey, name, idNum, cardNo, mobile, response_string, header_string);
+        bool ret = checkParam(response, idNum, mobile, cardNo, name);
         if (! ret)
         {
-            messages::internalError(response);
+            BMCWEB_LOG_CRITICAL<<"checkParam error. idNum:"<<idNum<<", mobile"<<mobile<<", cardNo:"<<cardNo<<", name:"<<name;
             response.end();
             return;
         }
 
-        response.jsonValue = nlohmann::json::parse(response_string);
+        ret = curlComm(*appId, *appKey, name, idNum, cardNo, mobile, response_string, header_string);
+        if (! ret)
+        {
+            messages::internalError(response);
+            code = ERROR_CURL_COMM;
+        }
+
+        try
+        {
+            response.jsonValue = nlohmann::json::parse(response_string);
+            code = std::stoi(response.jsonValue["code"].get<std::string>());
+            charge = static_cast<uint8_t>(response.jsonValue["chargeStatus"]);
+        }
+        catch(const std::exception& e)
+        {
+            BMCWEB_LOG_CRITICAL << e.what();
+            messages::operationFailed(response);
+            code = ERROR_JSON_PARSE;
+        }
 
         //::ffff:121.35.103.241
         try
         {
-            insert2mysql(name, idNum, cardNo, mobile, req.remoteIpAddr.substr(7), static_cast<uint8_t>(response.jsonValue["chargeStatus"]), code, req.session->username);
+            insert2mysql(name, idNum, cardNo, mobile, req.remoteIpAddr.substr(7), charge , code, req.session->username);
         }
         catch(const std::exception& e)
         {
@@ -400,7 +445,30 @@ class SystemResetActionInfo : public Node
 
         return true;
     }
-
+    static bool checkParam(crow::Response& response, const std::string & idNum, const std::string & mobile, const std::string & name,const std::string & userIp)
+    {
+        if (name.length() > 15)
+        {
+            messages::queryParameterOutOfRange(response, name, "name", "length <= 15");
+            return false;
+        }
+        if (idNum.length() > 18)
+        {
+            messages::queryParameterOutOfRange(response, idNum, "idNum", "length <= 18");
+            return false;
+        }
+        if (mobile.length() > 11)
+        {
+            messages::queryParameterOutOfRange(response, mobile, "mobile", "mobile <= 11");
+            return false;
+        }
+        if (userIp.length() > 15)
+        {
+            messages::queryParameterOutOfRange(response, userIp, "userIp", "userIp <= 15");
+            return false;
+        }
+        return true;
+    }
     void doPost(crow::Response& response, const crow::Request& req,
                const std::vector<std::string>&) override
     {
@@ -421,10 +489,11 @@ class SystemResetActionInfo : public Node
             response.end();
             return;
         }
-        if (name->length() > 15)
+        bool ret = checkParam(response, idNum, mobile, *name, *userIp);
+        if (ret != true)
         {
-            messages::queryParameterOutOfRange(response, *name, "name", "length <= 15");
             response.end();
+            return;
         }
         std::string response_string;
         std::string header_string;
@@ -434,7 +503,7 @@ class SystemResetActionInfo : public Node
         if (!curlComm(idNum, mobile, *name, *userIp, response_string ,header_string))
         {
             messages::serviceInUnknownState(response);
-            code = 101;
+            code = ERROR_CURL_COMM;
         }
 
         try
@@ -444,21 +513,22 @@ class SystemResetActionInfo : public Node
             {
                 charge = 1;
             }
+            code = std::stoi(response.jsonValue["code"].get<std::string>());
         }
         catch(const std::exception& e)
         {
             BMCWEB_LOG_CRITICAL << e.what();
             messages::operationFailed(response);
-            code = 102;
+            code = ERROR_JSON_PARSE;
         }
-        
+
         try
         {
             insert2mysql(*name, idNum, mobile, *userIp, req.remoteIpAddr.substr(7), charge, code, req.session->username);
         }
         catch(const std::exception& e)
         {
-            BMCWEB_LOG_CRITICAL<<"productB intert data into mysql failed. username:"<<req.session->username;
+            BMCWEB_LOG_CRITICAL<<"productA intert data into mysql failed. username:"<<req.session->username;
             BMCWEB_LOG_CRITICAL<<e.what();
         }
 
