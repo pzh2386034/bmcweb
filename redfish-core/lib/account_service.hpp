@@ -32,7 +32,7 @@
 
 const std::map<std::string, std::string> schema {
         { "productB", "CREATE TABLE ?(id INTEGER AUTO_INCREMENT PRIMARY KEY, name VARCHAR(15) NOT NULL, idNum VARCHAR(18) NOT NULL, cardNo VARCHAR(20) NOT NULL, mobile VARCHAR(11) NOT NULL, ts DATETIME default CURRENT_TIMESTAMP, reqIp VARCHAR(15) NOT NULL , charge boolean NOT NULL, queryCode INT) ENGINE=InnoDB;"},
-        { "productA", "CREATE TABLE ?(id INTEGER AUTO_INCREMENT PRIMARY KEY, name VARCHAR(15), idNum VARCHAR(18) , mobile VARCHAR(11), userIp VARCHAR(15) , ts DATETIME default CURRENT_TIMESTAMP, reqIp VARCHAR(15) NOT NULL , charge boolean NOT NULL , queryCode INT) ENGINE=InnoDB;"},
+        { "productA", "CREATE TABLE ?(id INTEGER AUTO_INCREMENT PRIMARY KEY, name VARCHAR(64), idNum VARCHAR(64) , mobile VARCHAR(64), userIp VARCHAR(15) , ts DATETIME default CURRENT_TIMESTAMP, reqIp VARCHAR(15) NOT NULL , charge boolean NOT NULL , queryCode INT) ENGINE=InnoDB;"},
         { "userTable", "CREATE TABLE users(id INTEGER AUTO_INCREMENT PRIMARY KEY, username VARCHAR(15) NOT NULL, companyname VARCHAR(50) , contactName VARCHAR(15) , contactmobile VARCHAR(11), email VARCHAR(50), ts DATETIME default CURRENT_TIMESTAMP, product TINYINT NOT NULL,  enabled boolean NOT NULL) ENGINE=InnoDB;"
         },
         { "insertUser", "insert into users(username, companyname, contactName, contactmobile, email, product, enabled) values(?, ?, ?, ?, ?, ?, ?);"

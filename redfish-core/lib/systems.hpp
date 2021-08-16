@@ -291,13 +291,15 @@ class SystemResetActionInfo : public Node
         res.jsonValue["Name"] = "Anti-Fraud Product";
         res.end();
     }
-    static std::string getUrl(std::string idNum, std::string mobile, std::string name, std::string userIp)
+    static std::string getUrl(const std::string &idNum, const std::string &idCryType, const std::string &mobile, const std::string &mobileCryType,  const std::string &name, const std::string &nameCryType, const std::string &userIp)
     {
         std::string reqUrl("https://antielectricfraud-prod-api.qunlicloud.com/api/nsc/openapi/multipleLoans?");
         if (mobile != "")
         {
             reqUrl += "phoneNumber=";
             reqUrl += mobile;
+            reqUrl += "&phoneCryptoType=";
+            reqUrl += mobileCryType;
         }
         if (userIp != "")
         {
@@ -309,11 +311,15 @@ class SystemResetActionInfo : public Node
         {
             reqUrl += "&idNumber=";
             reqUrl += idNum;
+            reqUrl += "&idCryptoType=";
+            reqUrl += idCryType;
         }
         if (name != "")
         {
             reqUrl += "&name=";
             reqUrl += name;
+            reqUrl += "&nameCryptoType=";
+            reqUrl += nameCryType;
         }
 
         BMCWEB_LOG_DEBUG<<"product A, getUrl:"<<reqUrl;
@@ -384,8 +390,6 @@ class SystemResetActionInfo : public Node
     {
         std::stringstream sqlBuf;
         sqlBuf << "insert into "<<username<<"(name, idNum, mobile, userIp, reqIp, charge, queryCode) values(?, ?, ?, ?, ?, ?, ?);";
-        BMCWEB_LOG_DEBUG<<sqlBuf.str();
-        BMCWEB_LOG_CRITICAL<<"*******:"<<sqlBuf.str();
         try
         {
             zdb::Connection conn = crow::dbconnections::dbpoll->getConnection();
@@ -408,11 +412,11 @@ class SystemResetActionInfo : public Node
         return;
     }
 
-    static bool curlComm(const std::string &idNum, const std::string &mobile, const std::string &name, const std::string &userIp, std::string& response_string, std::string &header_string)
+    static bool curlComm(const std::string &idNum, const std::string &idCryType, const std::string &mobile, const std::string &mobileCryType,  const std::string &name, const std::string &nameCryType, const std::string &userIp, std::string& response_string, std::string &header_string)
     {
         CURL *curl;
         char *output = NULL;
-        std::string nameEncode("");
+        std::string nameEncode(name);
 
 
         curl = curl_easy_init();
@@ -421,14 +425,14 @@ class SystemResetActionInfo : public Node
             BMCWEB_LOG_CRITICAL<<"curl_easy_init failed.";
             return false;
         }
-        if(name != "") {
+        if(name != "" && nameCryType == "0") {
             output = curl_easy_escape(curl, name.c_str(), static_cast<int>(name.length()) );
             if(output) {
                 nameEncode += output;
                 curl_free(output);
             }
         }
-        std::string reqUrl = getUrl(idNum, mobile, nameEncode, userIp);
+        std::string reqUrl = getUrl(idNum, idCryType,  mobile, mobileCryType,  nameEncode, nameCryType, userIp);
 
         struct curl_slist *chunk = getHeaderList();
 
@@ -454,19 +458,19 @@ class SystemResetActionInfo : public Node
     }
     static bool checkParam(crow::Response& response, const std::string & idNum, const std::string & mobile, const std::string & name,const std::string & userIp)
     {
-        if (name.length() > 15)
+        if (name.length() > 64 )
         {
-            messages::queryParameterOutOfRange(response, name, "name", "length <= 15");
+            messages::queryParameterOutOfRange(response, name, "name", "length must be less than 64 bytes");
             return false;
         }
-        if (idNum.length() > 18)
+        if (idNum.length() > 64 )
         {
-            messages::queryParameterOutOfRange(response, idNum, "idNum", "length <= 18");
+            messages::queryParameterOutOfRange(response, idNum, "idNum", "length must be less than 64 bytes");
             return false;
         }
-        if (mobile.length() > 11)
+        if (mobile.length() > 64 )
         {
-            messages::queryParameterOutOfRange(response, mobile, "mobile", "mobile <= 11");
+            messages::queryParameterOutOfRange(response, mobile, "mobile", "length must be less than 64 bytes");
             return false;
         }
         if (userIp.length() > 15)
@@ -492,11 +496,14 @@ class SystemResetActionInfo : public Node
             return;
         }
         std::optional<std::string> idNum("");
+        std::optional<std::string> idCryType("0");
         std::optional<std::string> mobile("");
+        std::optional<std::string> mobileCryType("0");
         std::optional<std::string> name("");
+        std::optional<std::string> nameCryType("0");
         std::optional<std::string> userIp("");
         if (!json_util::readJson(
-                req, response, "idNum",idNum, "mobile", mobile, "name", name, "userIp", userIp))
+                req, response, "idNum",idNum, "idCryType", idCryType, "mobile", mobile, "mobileCryType", mobileCryType,  "name", name, "nameCryType", nameCryType, "userIp", userIp))
         {
             response.end();
             return;
@@ -512,7 +519,7 @@ class SystemResetActionInfo : public Node
         uint8_t charge = 0;
         int code = 0;
 
-        if (!curlComm(*idNum, *mobile, *name, *userIp, response_string ,header_string))
+        if (!curlComm(*idNum, *idCryType, *mobile, *mobileCryType, *name, *nameCryType, *userIp, response_string ,header_string))
         {
             messages::serviceInUnknownState(response);
             code = ERROR_CURL_COMM;
