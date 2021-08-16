@@ -1,3 +1,11 @@
+/*
+ * @Author: your name
+ * @Date: 2021-07-15 02:17:15
+ * @LastEditTime: 2021-08-16 11:38:31
+ * @LastEditors: Please set LastEditors
+ * @Description: In User Settings Edit
+ * @FilePath: /bmcweb/src/webserver_main.cpp
+ */
 #include <app.h>
 #include <systemd/sd-daemon.h>
 
@@ -29,7 +37,7 @@
 #endif
 
 constexpr int defaultPort = 443;
-std::string sqldb("mysql://localhost:3306/bankcard?user=root&password=0penBmc");
+std::string sqldb("mysql://localhost:3306/workdb?user=root&password=0penBmc");
 
 inline void setupSocket(crow::App& app)
 {

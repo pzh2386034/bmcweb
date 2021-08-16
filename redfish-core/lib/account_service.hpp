@@ -391,7 +391,7 @@ class ManagerAccount : public Node
     }
 
   private:
-    void doGet(crow::Response& res, const crow::Request& req,
+    void doGet(crow::Response& res, const crow::Request& ,
                const std::vector<std::string>& params) override
     {
         auto asyncResp = std::make_shared<AsyncResp>(res);
@@ -426,15 +426,20 @@ class ManagerAccount : public Node
             messages::internalError(asyncResp->res);
             return ;
         }
-        std::string sqlBuf("drop table ");
-        sqlBuf += params[0];
-        sqlBuf += ";";
+        std::string sqlDropBuf("drop table ");
+        sqlDropBuf += params[0];
+        sqlDropBuf += ";";
+        std::string sqlDelLine("delete from users where username = '");
+        sqlDelLine += params[0];
+        sqlDelLine +="';";
         try
         {
             zdb::Connection conn = crow::dbconnections::dbpoll->getConnection();
-            zdb::PreparedStatement p1 = conn.prepareStatement(sqlBuf.c_str());
+            zdb::PreparedStatement p1 = conn.prepareStatement(sqlDropBuf.c_str());
+            zdb::PreparedStatement p2 = conn.prepareStatement(sqlDelLine.c_str());
             conn.beginTransaction();
             p1.execute();
+            p2.execute();
             conn.commit();
         } catch (zdb::sql_exception &e)
         {
